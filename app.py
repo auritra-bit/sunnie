@@ -7,13 +7,12 @@ from flask import Flask
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
-from huggingface_hub import InferenceClient, login
+from huggingface_hub import InferenceClient
 
 app = Flask(__name__)
 
-HF_API_KEY = os.getenv("HF_API_KEY")
-login(HF_API_KEY)
-client = InferenceClient()
+HF_API_KEY = os.getenv("HF_API_KEY")  # Loaded from Render env vars
+client = InferenceClient(api_key=HF_API_KEY)
 
 # Store chat history
 messages = [
@@ -671,21 +670,28 @@ def handle_comtask(username, userid):
 
 def get_ai_reply(user_query):
     try:
-        prompt = f"{user_query}\nReply under 200 characters. Keep it short and helpful."
-
-        response = client.text_generation(
-            prompt=prompt,
+        query_with_condition = f"{user_query} - reply under 200 characters in total and don't tell me how many characters you used in your response."
+        messages.append({"role": "user", "content": query_with_condition})
+        
+        stream = client.chat.completions.create(
             model="Qwen/Qwen2.5-72B-Instruct",
-            max_new_tokens=200,
-            temperature=0.7,
-            top_p=0.9
+            messages=messages,
+            temperature=0.5,
+            max_tokens=2048,
+            top_p=0.7,
+            stream=True
         )
 
-        return response[:256]
-    
+        assistant_reply = ""
+        for chunk in stream:
+            if chunk.choices[0].delta.get("content"):
+                assistant_reply += chunk.choices[0].delta["content"]
+        
+        messages.append({"role": "assistant", "content": assistant_reply})
+        return assistant_reply[:256]
+
     except Exception as e:
         return f"⚠️ AI Error: {str(e)}"
-
 
 
 
