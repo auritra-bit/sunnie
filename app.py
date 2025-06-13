@@ -49,6 +49,125 @@ except Exception as e:
     print(f"❌ Google Sheets connection failed: {e}")
     SHEETS_ENABLED = False
 
+# === Timer Message System ===
+# Global variables for tracking
+chat_message_count = 0
+last_reset_time = datetime.now()
+timer_threads = []
+
+# Timer messages configuration
+TIMER_MESSAGES = [
+    {
+        "message": "To study more attentively and productively, use commands. Type !help to see all commands. Learn how to use them here: https://tinyurl.com/command-user-manual —Use it to make your study more efficient",
+        "interval_minutes": 20,
+        "min_chat_lines": 5,
+        "last_sent": None
+    },
+    {
+        "message": "Hi guys! I am Sunnie — a former public servant at the Ministry of National Defense, now studying to become an IT official. More about me & the stream: https://tinyurl.com/sunnie-study",
+        "interval_minutes": 40,
+        "min_chat_lines": 3,
+        "last_sent": None
+    },
+    {
+        "message": "If you want to study with me, do not forget to subscribe and like 😊 If you like to support the live stream: https://buymeacoffee.com/nayakwonelq -Happy studying and thank you 💛",
+        "interval_minutes": 55,
+        "min_chat_lines": 6,
+        "last_sent": None
+    },
+    {
+        "message": "Chat Rules: Be respectful, no ads/spam/explicit content. Please use English only for chat. Follow moderators. Respect everyone. Spamming, insults, or harassment will lead to a ban",
+        "interval_minutes": 30,
+        "min_chat_lines": 7,
+        "last_sent": None
+    },
+    {
+        "message": "I usually start my live stream between 10:00 AM and 2:00 AM KST and study for 7 to 10 hours. Any schedule changes due to unforeseen events will be updated instantly via a post on the YT Community tab",
+        "interval_minutes": 40,
+        "min_chat_lines": 4,
+        "last_sent": None
+    },
+]
+
+def increment_chat_count():
+    """Call this function every time a new chat message is received"""
+    global chat_message_count
+    chat_message_count += 1
+
+def reset_chat_count_daily():
+    """Reset chat count every 24 hours"""
+    global chat_message_count, last_reset_time
+    
+    while True:
+        now = datetime.now()
+        if now - last_reset_time >= timedelta(days=1):
+            chat_message_count = 0
+            last_reset_time = now
+            print("📊 Daily chat count reset")
+        
+        time.sleep(3600)  # Check every hour
+
+def should_send_timer_message(timer_config):
+    """Check if a timer message should be sent"""
+    global chat_message_count
+    
+    now = datetime.now()
+    
+    # Check if enough chat lines have occurred
+    if chat_message_count < timer_config["min_chat_lines"]:
+        return False
+    
+    # Check if enough time has passed since last message of this type
+    if timer_config["last_sent"] is None:
+        return True
+    
+    time_diff = now - timer_config["last_sent"]
+    required_interval = timedelta(minutes=timer_config["interval_minutes"])
+    
+    return time_diff >= required_interval
+
+def send_timer_message(timer_config):
+    """Send a timer message and update its last_sent time"""
+    global chat_message_count
+    
+    try:
+        send_message(VIDEO_ID, timer_config["message"], ACCESS_TOKEN)
+        timer_config["last_sent"] = datetime.now()
+        
+        # Reset chat count after sending message
+        chat_message_count = 0
+        
+        print(f"📢 Timer message sent: {timer_config['message'][:50]}...")
+    except Exception as e:
+        print(f"❌ Error sending timer message: {e}")
+
+def timer_message_worker():
+    """Background worker to check and send timer messages"""
+    while True:
+        try:
+            for timer_config in TIMER_MESSAGES:
+                if should_send_timer_message(timer_config):
+                    send_timer_message(timer_config)
+                    time.sleep(2)  # Small delay between messages if multiple are due
+        except Exception as e:
+            print(f"❌ Timer message worker error: {e}")
+        
+        time.sleep(60)  # Check every minute
+
+def start_timer_system():
+    """Initialize and start the timer message system"""
+    # Start daily reset thread
+    reset_thread = threading.Thread(target=reset_chat_count_daily, daemon=True)
+    reset_thread.start()
+    timer_threads.append(reset_thread)
+    
+    # Start timer message worker thread
+    timer_thread = threading.Thread(target=timer_message_worker, daemon=True)
+    timer_thread.start()
+    timer_threads.append(timer_thread)
+    
+    print("✅ Timer message system started")
+
 def refresh_access_token():
     global ACCESS_TOKEN
     url = "https://oauth2.googleapis.com/token"
@@ -491,9 +610,7 @@ def process_command(message, author_name, author_id):
         goal_text = message[6:]  # Remove "!goal " prefix
         return handle_goal(author_name, author_id, goal_text)
     elif message_lower == "!help":
-        return ("📚 Study Bot Commands: !attend (daily check-in), !start/!stop (study sessions), "
-                "!task [name] (add task), !done (complete task), !goal [name] (set goal), "
-                "!complete (finish goal), !rank (your stats), !top (leaderboard), !summary (your overview)")
+        return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ai (ask anything)")
     
     return None
 
@@ -502,12 +619,18 @@ def run_bot():
         print("❌ Error: YOUTUBE_VIDEO_ID environment variable not set.")
         return
 
+    # Start timer system
+    start_timer_system()
+
     chat = pytchat.create(video_id=VIDEO_ID)
     print("✅ Bot started...")
 
     while chat.is_alive():
         for c in chat.get().sync_items():
             print(f"{c.author.name}: {c.message}")
+            
+            # Increment chat count for timer system
+            increment_chat_count()
             
             # Handle original !hello command
             if "!hello" in c.message.lower():
