@@ -39,7 +39,7 @@ def token_refresher():
         # Refresh every 50 minutes (tokens usually last 1 hour)
         time.sleep(50 * 60)
 
-def send_message(video_id, message_text):
+def send_message(video_id, message_text, retry=False):
     with access_token_lock:
         token = ACCESS_TOKEN
 
@@ -52,7 +52,9 @@ def send_message(video_id, message_text):
 
     if video_info.status_code != 200:
         print("❌ Failed to get video info. Trying token refresh.")
-        refresh_access_token()
+        if not retry:
+            refresh_access_token()
+            send_message(video_id, message_text, retry=True)
         return
 
     live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
@@ -75,12 +77,14 @@ def send_message(video_id, message_text):
 
     if response.status_code == 401:
         print("🔁 Token expired. Refreshing...")
-        refresh_access_token()
-        send_message(video_id, message_text)  # Retry once with new token
+        if not retry:
+            refresh_access_token()
+            send_message(video_id, message_text, retry=True)  # Retry only once
     elif response.status_code == 200:
         print(f"✅ Replied: {message_text}")
     else:
         print("❌ Failed to send message:", response.text)
+
 
 def run_bot():
     if not VIDEO_ID:
