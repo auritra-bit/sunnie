@@ -13,6 +13,8 @@ CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET")
 VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
 
+access_token_lock = threading.Lock()
+
 def refresh_access_token():
     global ACCESS_TOKEN
     url = "https://oauth2.googleapis.com/token"
@@ -24,17 +26,28 @@ def refresh_access_token():
     }
     response = requests.post(url, data=data)
     if response.status_code == 200:
-        ACCESS_TOKEN = response.json()["access_token"]
+        new_token = response.json()["access_token"]
+        with access_token_lock:
+            ACCESS_TOKEN = new_token
         print("✅ Access token refreshed.")
     else:
         print("❌ Failed to refresh token:", response.text)
 
-def send_message(video_id, message_text, access_token):
+def token_refresher():
+    while True:
+        refresh_access_token()
+        # Refresh every 50 minutes (tokens usually last 1 hour)
+        time.sleep(50 * 60)
+
+def send_message(video_id, message_text):
+    with access_token_lock:
+        token = ACCESS_TOKEN
+
     url = "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet"
 
     video_info = requests.get(
         f"https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id={video_id}",
-        headers={"Authorization": f"Bearer {access_token}"}
+        headers={"Authorization": f"Bearer {token}"}
     )
 
     if video_info.status_code != 200:
@@ -45,7 +58,7 @@ def send_message(video_id, message_text, access_token):
     live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
 
     headers = {
-        "Authorization": f"Bearer {access_token}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
     payload = {
@@ -63,7 +76,7 @@ def send_message(video_id, message_text, access_token):
     if response.status_code == 401:
         print("🔁 Token expired. Refreshing...")
         refresh_access_token()
-        send_message(video_id, message_text, ACCESS_TOKEN)
+        send_message(video_id, message_text)  # Retry once with new token
     elif response.status_code == 200:
         print(f"✅ Replied: {message_text}")
     else:
@@ -82,7 +95,7 @@ def run_bot():
             print(f"{c.author.name}: {c.message}")
             if "!hello" in c.message.lower():
                 reply = f"Hi {c.author.name}!"
-                send_message(VIDEO_ID, reply, ACCESS_TOKEN)
+                send_message(VIDEO_ID, reply)
         time.sleep(1)
 
 @app.route("/")
@@ -93,7 +106,8 @@ def start_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# ✅ Start Flask in a thread, run bot in main thread
 if __name__ == "__main__":
+    # Start token refresher thread (daemon so it stops with main thread)
+    threading.Thread(target=token_refresher, daemon=True).start()
     threading.Thread(target=start_flask, daemon=True).start()
-    run_bot()  # 🔥 must be in main thread
+    run_bot()
