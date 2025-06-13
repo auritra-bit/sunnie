@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 import requests
 import pytchat
 from flask import Flask
@@ -74,6 +75,10 @@ def send_message(video_id, message_text, access_token):
 
 # Main bot logic
 def run_bot():
+    if not VIDEO_ID:
+        print("❌ Error: YOUTUBE_VIDEO_ID environment variable not set.")
+        return
+
     chat = pytchat.create(video_id=VIDEO_ID)
     print("✅ Bot started...")
 
@@ -87,10 +92,16 @@ def run_bot():
 
         time.sleep(1)
 
-# Flask keeps Render container alive
+# Flask route to show bot is live
 @app.route("/")
 def home():
-    return "Bot is running!"
+    return "🤖 YouTube Bot is running!"
 
+# Start bot and Flask
 if __name__ == "__main__":
-    run_bot()
+    # Run bot in background thread
+    threading.Thread(target=run_bot, daemon=True).start()
+
+    # Start Flask app (Render looks for port)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
