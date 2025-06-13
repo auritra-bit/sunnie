@@ -329,7 +329,7 @@ def get_badges(total_minutes):
 # === Study Bot Commands ===
 def handle_attend(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     now = datetime.now()
     today_date = now.date()
@@ -342,7 +342,7 @@ def handle_attend(username, userid):
                 try:
                     row_date = datetime.strptime(str(row['Date']), "%Y-%m-%d %H:%M:%S").date()
                     if row_date == today_date:
-                        return f"⚠️ {username}, your attendance for today is already recorded! ✅"
+                        return f"⚠️ {username} , your attendance for today is already recorded! ✅"
                 except ValueError:
                     continue
     except:
@@ -356,11 +356,11 @@ def handle_attend(username, userid):
     update_user_xp(username, userid, 10, "Attendance")
     
     streak = calculate_streak(userid)
-    return f"✅ {username}, your attendance is logged and you earned 10 XP! 🔥 Daily Streak: {streak} days."
+    return f"✅ {username} , your attendance is logged and you earned 10 XP! 🔥 Daily Streak: {streak} days."
 
 def handle_start(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -369,17 +369,17 @@ def handle_start(username, userid):
         # Check if a session is already running
         for row in reversed(records):
             if str(row.get('UserID', '')) == str(userid) and str(row.get('Status', '')).strip() == 'Active':
-                return f"⚠️ {username}, you already started a session. Use !stop before starting a new one."
+                return f"⚠️ {username} , you already started a session. Use !stop before starting a new one."
     except Exception as e:
         print(f"Error checking sessions: {e}")
 
     # Log new session start
     session_sheet.append_row([username, userid, now, "", "", "Active"])
-    return f"⏱️ {username}, your study session has started! Use !stop to end it. Happy studying 📚"
+    return f"⏱️ {username} , your study session has started! Use !stop to end it. Happy studying 📚"
 
 def handle_stop(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     now = datetime.now()
 
@@ -401,7 +401,7 @@ def handle_stop(username, userid):
                     continue
 
         if not session_start:
-            return f"⚠️ {username}, you didn't start any session. Use !start to begin."
+            return f"⚠️ {username} , you didn't start any session. Use !start to begin."
 
         # Calculate duration and XP
         duration_minutes = int((now - session_start).total_seconds() / 60)
@@ -417,20 +417,20 @@ def handle_stop(username, userid):
 
         # Badge check
         badges = get_badges(duration_minutes)
-        badge_message = f" 🎖 {username}, you unlocked a badge: {badges[-1]}! Keep it up!" if badges else ""
+        badge_message = f" 🎖 {username} , you unlocked a badge: {badges[-1]}! Keep it up!" if badges else ""
 
-        return f"👩🏻‍💻📓✍🏻 {username}, you studied for {duration_minutes} minutes and earned {xp_earned} XP.{badge_message}"
+        return f"👩🏻‍💻📓✍🏻 {username} , you studied for {duration_minutes} minutes and earned {xp_earned} XP.{badge_message}"
     
     except Exception as e:
         return f"⚠️ Error stopping session: {str(e)}"
 
 def handle_rank(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     total_xp = get_user_total_xp(userid)
     user_rank = get_rank(total_xp)
-    return f"🏅 {username}, you have {total_xp} XP. Your rank is: {user_rank}"
+    return f"🏅 {username} , you have {total_xp} XP. Your rank is: {user_rank}"
 
 def handle_top():
     if not SHEETS_ENABLED:
@@ -450,27 +450,27 @@ def handle_top():
 
 def handle_task(username, userid, task_text):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     if not task_text or len(task_text.strip()) < 3:
-        return f"⚠️ {username}, please provide a task like: !task Physics Chapter 1"
+        return f"⚠️ {username} , please provide a task like: !task Physics Chapter 1"
 
     try:
         records = task_sheet.get_all_records()
         for row in records[::-1]:
             if str(row.get('UserID', '')) == str(userid) and str(row.get('Status', '')).strip() == 'Pending':
-                return f"⚠️ {username}, please complete your previous task first. Use !done to mark it as completed."
+                return f"⚠️ {username} , please complete your previous task first. Use !done to mark it as completed."
     except Exception as e:
         print(f"Error checking tasks: {e}")
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     task_name = task_text.strip()
     task_sheet.append_row([username, userid, task_name, now, "", "Pending"])
-    return f"✏️ {username}, your task '{task_name}' has been added. Study well! Use !done to complete it."
+    return f"✏️ {username} , your task '{task_name}' has been added. Study well! Use !done to complete it."
 
 def handle_done(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     try:
         records = task_sheet.get_all_records()
@@ -489,15 +489,15 @@ def handle_done(username, userid):
                 xp_earned = 15
                 update_user_xp(username, userid, xp_earned, "Task Completed")
 
-                return f"✅ {username}, you completed your task '{task_name}' and earned {xp_earned} XP! Great job! 💪"
+                return f"✅ {username} , you completed your task '{task_name}' and earned {xp_earned} XP! Great job! 💪"
 
-        return f"⚠️ {username}, you don't have any active task. Use !task [your task] to add one."
+        return f"⚠️ {username} , you don't have any active task. Use !task [your task] to add one."
     except Exception as e:
         return f"⚠️ Error completing task: {str(e)}"
 
 def handle_summary(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     try:
         # Get total XP
@@ -526,7 +526,7 @@ def handle_summary(username, userid):
 
         hours = total_minutes // 60
         minutes = total_minutes % 60
-        return (f"📊 {username}'s Summary: "
+        return (f"📊 {username} 's Summary: "
                 f"⏱️ Study Time: {hours}h {minutes}m "
                 f"⚜️ XP: {total_xp} "
                 f"✅ Completed: {completed_tasks} "
@@ -536,28 +536,28 @@ def handle_summary(username, userid):
 
 def handle_goal(username, userid, goal_text):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     if not goal_text or len(goal_text.strip()) < 3:
-        return f"⚠️ {username}, please provide a goal like: !goal Complete Math Course"
+        return f"⚠️ {username} , please provide a goal like: !goal Complete Math Course"
 
     try:
         records = goal_sheet.get_all_records()
         # Check if user already has an active goal
         for row in records[::-1]:
             if str(row.get('UserID', '')) == str(userid) and str(row.get('Status', '')).strip() == 'Pending':
-                return f"⚠️ {username}, please complete your previous goal first. Use !complete to mark it as completed."
+                return f"⚠️ {username} , please complete your previous goal first. Use !complete to mark it as completed."
     except Exception as e:
         print(f"Error checking goals: {e}")
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     goal_name = goal_text.strip()
     goal_sheet.append_row([username, userid, goal_name, now, "", "Pending"])
-    return f"🎯 {username}, your goal '{goal_name}' has been set! Work towards it and use !complete when you achieve it. You'll earn 25 XP! 💪"
+    return f"🎯 {username} , your goal '{goal_name}' has been set! Work towards it and use !complete when you achieve it. You'll earn 25 XP! 💪"
 
 def handle_complete(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
+        return f"⚠️ {username} , study features are currently unavailable."
     
     try:
         records = goal_sheet.get_all_records()
@@ -574,13 +574,90 @@ def handle_complete(username, userid):
 
                 # Update XP - Goals give 25 XP
                 xp_earned = 25
-                update_user_xp(username, userid, xp_earned, "Goal Completed")
+                update_user_xp(username , userid, xp_earned, "Goal Completed")
 
-                return f"🎉 {username}, congratulations! You completed your goal '{goal_name}' and earned {xp_earned} XP! Amazing achievement! 🏆✨"
+                return f"🎉 {username} , congratulations! You completed your goal '{goal_name}' and earned {xp_earned} XP! Amazing achievement! 🏆✨"
 
-        return f"⚠️ {username}, you don't have any active goal. Use !goal [your goal] to set one."
+        return f"⚠️ {username} , you don't have any active goal. Use !goal [your goal] to set one."
     except Exception as e:
         return f"⚠️ Error completing goal: {str(e)}"
+    
+
+def handle_pending(username, userid):
+    """Show current pending task for the user"""
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username} , study features are currently unavailable."
+    
+    try:
+        records = task_sheet.get_all_records()
+        
+        for row in records[::-1]:  # Check from latest to oldest
+            if str(row.get('UserID', '')) == str(userid) and str(row.get('Status', '')).strip() == 'Pending':
+                task_name = row.get('TaskName', '')
+                created_date = row.get('CreatedDate', '')
+                return f"📋 {username} , your pending task: '{task_name}' (Created: {created_date})"
+        
+        return f"✅ {username} , you don't have any pending tasks. Use !task [task name] to add one."
+    
+    except Exception as e:
+        return f"⚠️ Error fetching pending task: {str(e)}"
+
+def handle_remove(username, userid):
+    """Remove current active/pending task"""
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username} , study features are currently unavailable."
+    
+    try:
+        records = task_sheet.get_all_records()
+        
+        for i in range(len(records) - 1, -1, -1):  # Check from latest to oldest
+            row = records[i]
+            if str(row.get('UserID', '')) == str(userid) and str(row.get('Status', '')).strip() == 'Pending':
+                row_index = i + 2  # Google Sheets is 1-indexed and has header row
+                task_name = row.get('TaskName', '')
+                
+                # Update status to 'Removed'
+                task_sheet.update_cell(row_index, 6, "Removed")
+                
+                return f"🗑️ {username} , your task '{task_name}' has been removed."
+        
+        return f"⚠️ {username} , you don't have any pending tasks to remove."
+    
+    except Exception as e:
+        return f"⚠️ Error removing task: {str(e)}"
+
+def handle_comtask(username, userid):
+    """Show last 3 completed tasks for the user"""
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username} , study features are currently unavailable."
+    
+    try:
+        records = task_sheet.get_all_records()
+        completed_tasks = []
+        
+        # Get all completed tasks for this user
+        for row in records:
+            if str(row.get('UserID', '')) == str(userid) and str(row.get('Status', '')).strip() == 'Completed':
+                completed_tasks.append({
+                    'name': row.get('TaskName', ''),
+                    'completed_date': row.get('CompletedDate', '')
+                })
+        
+        if not completed_tasks:
+            return f"📝 {username} , you haven't completed any tasks yet. Keep studying!"
+        
+        # Get last 3 completed tasks (reverse to get most recent first)
+        recent_tasks = completed_tasks[-3:][::-1]
+        
+        message = f"📚 {username} 's last {len(recent_tasks)} completed task(s): "
+        for i, task in enumerate(recent_tasks, 1):
+            message += f"{i}. {task['name']} "
+        
+        return message.strip()
+    
+    except Exception as e:
+        return f"⚠️ Error fetching completed tasks: {str(e)}"
+
 
 def process_command(message, author_name, author_id):
     """Process study bot commands from chat messages"""
@@ -604,11 +681,17 @@ def process_command(message, author_name, author_id):
     elif message_lower == "!complete":
         return handle_complete(author_name, author_id)
     elif message_lower.startswith("!task "):
-        task_text = message[6:]  # Remove "!task " prefix
+        task_text = message[6:]
         return handle_task(author_name, author_id, task_text)
     elif message_lower.startswith("!goal "):
-        goal_text = message[6:]  # Remove "!goal " prefix
+        goal_text = message[6:]
         return handle_goal(author_name, author_id, goal_text)
+    elif message_lower == "!pending":
+        return handle_pending(author_name, author_id)
+    elif message_lower == "!remove":
+        return handle_remove(author_name, author_id)
+    elif message_lower == "!comtask":
+        return handle_comtask(author_name, author_id)
     elif message_lower == "!help":
         return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ai (ask anything)")
     
@@ -634,7 +717,7 @@ def run_bot():
             
             # Handle original !hello command
             if "!hello" in c.message.lower():
-                reply = f"Hi {c.author.name}!"
+                reply = f"Hi {c.author.name} !"
                 send_message(VIDEO_ID, reply, ACCESS_TOKEN)
             
             # Handle study bot commands
