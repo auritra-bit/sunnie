@@ -3,12 +3,11 @@ import requests
 import time
 import os
 
-# ENV values
 REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+VIDEO_ID = os.getenv("VIDEO_ID")
 
-# Get new access token using refresh token
 def get_access_token():
     response = requests.post(
         "https://oauth2.googleapis.com/token",
@@ -16,17 +15,16 @@ def get_access_token():
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
             "refresh_token": REFRESH_TOKEN,
-            "grant_type": "refresh_token",
-        },
+            "grant_type": "refresh_token"
+        }
     )
     return response.json().get("access_token")
 
-# Send reply to chat
 def send_message(live_chat_id, message, access_token):
     url = "https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet"
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
+        "Content-Type": "application/json"
     }
     payload = {
         "snippet": {
@@ -38,11 +36,9 @@ def send_message(live_chat_id, message, access_token):
         }
     }
     res = requests.post(url, headers=headers, json=payload)
-    print("Sent:", res.status_code, res.text)
+    print("Message Sent:", res.status_code)
 
-# --- Start Bot ---
-video_id = "YOUR_STREAM_ID"  # change this
-chat = pytchat.create(video_id=video_id)
+chat = pytchat.create(video_id=VIDEO_ID)
 print("Bot started...")
 
 while chat.is_alive():
