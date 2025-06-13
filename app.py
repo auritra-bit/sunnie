@@ -1,11 +1,16 @@
-import pytchat
-import requests
-import time
-import os
 from flask import Flask
 import threading
 
 app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Sunnie-BOT is running!"
+
+import pytchat
+import requests
+import time
+import os
 
 REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -42,23 +47,17 @@ def send_message(live_chat_id, message, access_token):
     res = requests.post(url, headers=headers, json=payload)
     print("Message Sent:", res.status_code)
 
-chat = pytchat.create(video_id=VIDEO_ID)
-print("Bot started...")
+def your_bot_function_name():
+    chat = pytchat.create(video_id=VIDEO_ID)
+    print("Bot started...")
+    while chat.is_alive():
+        for c in chat.get().sync_items():
+            print(f"{c.author.name}: {c.message}")
+            if c.message.lower() == "!hello":
+                token = get_access_token()
+                send_message(c.live_chat_id, f"Hi {c.author.name}!", token)
+        time.sleep(1)
 
-while chat.is_alive():
-    for c in chat.get().sync_items():
-        print(f"{c.author.name}: {c.message}")
-        if c.message.lower() == "!hello":
-            token = get_access_token()
-            send_message(c.live_chat_id, f"Hi {c.author.name}!", token)
-    time.sleep(1)
-
-
-@app.route('/')
-def home():
-    return "Sunnie-BOT is running!"
-
-# Your existing bot logic — this should already be here
 threading.Thread(target=your_bot_function_name).start()
 
 if __name__ == "__main__":
