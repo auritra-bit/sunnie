@@ -515,7 +515,7 @@ def run_bot():
                 send_message(VIDEO_ID, reply, ACCESS_TOKEN)
             
             # Handle study bot commands
-            response = process_command(c.message, c.author.name, c.author.channel_id)
+            response = process_command(c.message, c.author.name, c.author.channelId)
             if response:
                 send_message(VIDEO_ID, response, ACCESS_TOKEN)
                 
