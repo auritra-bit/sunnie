@@ -7,12 +7,14 @@ from flask import Flask
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
-from huggingface_hub import InferenceClient
+from huggingface_hub import InferenceClient, login
 
 app = Flask(__name__)
 
-HF_API_KEY = os.getenv("HF_API_KEY")  # Loaded from Render env vars
-client = InferenceClient(api_key=HF_API_KEY)
+HF_API_KEY = os.getenv("HF_API_KEY")
+login(HF_API_KEY)
+
+client = InferenceClient()
 
 # Store chat history
 messages = [
