@@ -7,14 +7,12 @@ from flask import Flask
 
 app = Flask(__name__)
 
-# Get env vars from Render
 ACCESS_TOKEN = os.getenv("YOUTUBE_ACCESS_TOKEN")
 REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN")
 CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET")
 VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
 
-# Refresh token function
 def refresh_access_token():
     global ACCESS_TOKEN
     url = "https://oauth2.googleapis.com/token"
@@ -31,11 +29,9 @@ def refresh_access_token():
     else:
         print("❌ Failed to refresh token:", response.text)
 
-# Send reply to YouTube live chat
 def send_message(video_id, message_text, access_token):
     url = "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet"
-    
-    # Get liveChatId for the video
+
     video_info = requests.get(
         f"https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id={video_id}",
         headers={"Authorization": f"Bearer {access_token}"}
@@ -63,7 +59,7 @@ def send_message(video_id, message_text, access_token):
     }
 
     response = requests.post(url, headers=headers, json=payload)
-    
+
     if response.status_code == 401:
         print("🔁 Token expired. Refreshing...")
         refresh_access_token()
@@ -73,7 +69,6 @@ def send_message(video_id, message_text, access_token):
     else:
         print("❌ Failed to send message:", response.text)
 
-# Main bot logic
 def run_bot():
     if not VIDEO_ID:
         print("❌ Error: YOUTUBE_VIDEO_ID environment variable not set.")
@@ -85,23 +80,20 @@ def run_bot():
     while chat.is_alive():
         for c in chat.get().sync_items():
             print(f"{c.author.name}: {c.message}")
-
             if "!hello" in c.message.lower():
                 reply = f"Hi {c.author.name}!"
                 send_message(VIDEO_ID, reply, ACCESS_TOKEN)
-
         time.sleep(1)
 
-# Flask route to show bot is live
 @app.route("/")
 def home():
     return "🤖 YouTube Bot is running!"
 
-# Start bot and Flask
-if __name__ == "__main__":
-    # Run bot in background thread
-    threading.Thread(target=run_bot, daemon=True).start()
-
-    # Start Flask app (Render looks for port)
+def start_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+# ✅ Start Flask in a thread, run bot in main thread
+if __name__ == "__main__":
+    threading.Thread(target=start_flask, daemon=True).start()
+    run_bot()  # 🔥 must be in main thread
