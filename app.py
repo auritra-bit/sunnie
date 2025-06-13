@@ -2,6 +2,10 @@ import pytchat
 import requests
 import time
 import os
+from flask import Flask
+import threading
+
+app = Flask(__name__)
 
 REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -48,3 +52,14 @@ while chat.is_alive():
             token = get_access_token()
             send_message(c.live_chat_id, f"Hi {c.author.name}!", token)
     time.sleep(1)
+
+
+@app.route('/')
+def home():
+    return "Sunnie-BOT is running!"
+
+# Your existing bot logic — this should already be here
+threading.Thread(target=your_bot_function_name).start()
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=10000)
