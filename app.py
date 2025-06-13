@@ -7,17 +7,9 @@ from flask import Flask
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
-from huggingface_hub import InferenceClient
 
 app = Flask(__name__)
 
-HF_API_KEY = os.getenv("HF_API_KEY")
-client = InferenceClient(token=HF_API_KEY)
-
-# Store chat history
-messages = [
-    {"role": "assistant", "content": "Hello! I'm here to assist you. Feel free to ask anything."}
-]
 
 # YouTube API credentials
 ACCESS_TOKEN = os.getenv("YOUTUBE_ACCESS_TOKEN")
@@ -666,34 +658,6 @@ def handle_comtask(username, userid):
     
     except Exception as e:
         return f"⚠️ Error fetching completed tasks: {str(e)}"
-    
-
-def get_ai_reply(user_query):
-    try:
-        query_with_condition = f"{user_query} - reply under 200 characters in total and don't tell me how many characters you used in your response."
-        messages.append({"role": "user", "content": query_with_condition})
-        
-        stream = client.chat.completions.create(
-            model="Qwen/Qwen2.5-72B-Instruct",
-            messages=messages,
-            temperature=0.5,
-            max_tokens=2048,
-            top_p=0.7,
-            stream=True
-        )
-
-        assistant_reply = ""
-        for chunk in stream:
-            if chunk.choices[0].delta.get("content"):
-                assistant_reply += chunk.choices[0].delta["content"]
-        
-        messages.append({"role": "assistant", "content": assistant_reply})
-        return assistant_reply[:256]
-
-    except Exception as e:
-        return f"⚠️ AI Error: {str(e)}"
-
-
 
 def process_command(message, author_name, author_id):
     """Process study bot commands from chat messages"""
@@ -728,9 +692,6 @@ def process_command(message, author_name, author_id):
         return handle_remove(author_name, author_id)
     elif message_lower == "!comtask":
         return handle_comtask(author_name, author_id)
-    elif message_lower.startswith("!ai "):
-        user_query = message[4:] 
-        return get_ai_reply(user_query)
     elif message_lower == "!help":
         return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ai (ask anything)")
     
