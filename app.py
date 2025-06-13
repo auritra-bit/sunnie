@@ -58,7 +58,9 @@ def your_bot_function_name():
                 send_message(c.live_chat_id, f"Hi {c.author.name}!", token)
         time.sleep(1)
 
-threading.Thread(target=your_bot_function_name).start()
-
-if __name__ == "__main__":
+def run_flask():
     app.run(host='0.0.0.0', port=10000)
+
+# ✅ Run Flask in a thread, and bot on main thread
+threading.Thread(target=run_flask).start()
+your_bot_function_name()
