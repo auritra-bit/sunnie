@@ -13,7 +13,6 @@ app = Flask(__name__)
 
 HF_API_KEY = os.getenv("HF_API_KEY")
 login(HF_API_KEY)
-
 client = InferenceClient()
 
 # Store chat history
@@ -672,28 +671,21 @@ def handle_comtask(username, userid):
 
 def get_ai_reply(user_query):
     try:
-        query_with_condition = f"{user_query} - reply under 200 characters in total and don't tell me how many characters you used in your response."
-        messages.append({"role": "user", "content": query_with_condition})
-        
-        stream = client.chat.completions.create(
+        prompt = f"{user_query}\nReply under 200 characters. Keep it short and helpful."
+
+        response = client.text_generation(
+            prompt=prompt,
             model="Qwen/Qwen2.5-72B-Instruct",
-            messages=messages,
-            temperature=0.5,
-            max_tokens=2048,
-            top_p=0.7,
-            stream=True
+            max_new_tokens=200,
+            temperature=0.7,
+            top_p=0.9
         )
 
-        assistant_reply = ""
-        for chunk in stream:
-            if chunk.choices[0].delta.get("content"):
-                assistant_reply += chunk.choices[0].delta["content"]
-        
-        messages.append({"role": "assistant", "content": assistant_reply})
-        return assistant_reply[:256]
-
+        return response[:256]
+    
     except Exception as e:
         return f"⚠️ AI Error: {str(e)}"
+
 
 
 
