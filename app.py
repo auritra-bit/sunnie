@@ -310,27 +310,77 @@ def calculate_streak(userid):
 
 def get_rank(xp):
     xp = int(xp)
-    if xp >= 500:
-        return "📘 Scholar"
+    if xp >= 20000:
+        return "🤴Study Leader of the month"
+    elif xp >= 15000:
+        return "🥷⚔️Sunnie's Study Café's Ninja"
+    elif xp >= 10000:
+        return "🌌 Eternal Shadowblade"
+    elif xp >= 8000:
+        return "🛡️ Legendary Phantom Shinobi"
+    elif xp >= 6000:
+        return "⚡ Ascended Stealth Slayer"
+    elif xp >= 5000:
+        return "🔥 Dragonfire Mystic Ninja"
+    elif xp >= 4000:
+        return "🌪️ Stormborn Silent Tempest"
+    elif xp >= 3000:
+        return "💥 Shadowblade Ninja"
+    elif xp >= 2500:
+        return "🔥 Phantom Shinobi"
+    elif xp >= 2000:
+        return "⚔️ Stealth Slayer"
+    elif xp >= 1500:
+        return "🐉 Mystic Ninja"
+    elif xp >= 1200:
+        return "🌀 Silent Tempest"
+    elif xp >= 1000:
+        return "🌑 Nightcrawler"
+    elif xp >= 850:
+        return "🎯 Swift Claw"
+    elif xp >= 700:
+        return "🥷 Ninja Adept"
+    elif xp >= 550:
+        return "🌪️ Shadow Trainee"
+    elif xp >= 400:
+        return "💨 Hidden Leafling"
     elif xp >= 300:
-        return "📗 Master"
-    elif xp >= 150:
-        return "📙 Intermediate"
-    elif xp >= 50:
-        return "📕 Beginner"
+        return "🦊 Masked Novice"
+    elif xp >= 200:
+        return "🔪 Kunai Rookie"
+    elif xp >= 120:
+        return "🥋 Beltless Initiate"
+    elif xp >= 60:
+        return "🎒 Scroll Carrier"
+    elif xp >= 30:
+        return "👣 Silent Steps"
     else:
-        return "🍼 Newbie"
+        return "🍼 Lost in the Mist"
 
 def get_badges(total_minutes):
     badges = []
-    if total_minutes >= 50:
-        badges.append("🥉 Bronze Mind")
-    if total_minutes >= 110:
-        badges.append("🥈 Silver Brain")
-    if total_minutes >= 150:
-        badges.append("🥇 Golden Genius")
+    if total_minutes >= 30:
+        badges.append("🥷 Silent Scroll")
+    if total_minutes >= 60:
+        badges.append("🗡️ Swift Kunai")
+    if total_minutes >= 90:
+        badges.append("🌀 Shadow Shuriken")
+    if total_minutes >= 120:
+        badges.append("🌑 Nightblade")
+    if total_minutes >= 180:
+        badges.append("⚡ Lightning Step")
     if total_minutes >= 240:
-        badges.append("🔷 Diamond Crown")
+        badges.append("🔥 Fire Lotus")
+    if total_minutes >= 300:
+        badges.append("🐉 Dragon's Breath")
+    if total_minutes >= 420:
+        badges.append("🌪️ Tornado Strike")
+    if total_minutes >= 600:
+        badges.append("🛡️ Phantom Guard")
+    if total_minutes >= 800:
+        badges.append("💥 Shadow Master")
+    if total_minutes >= 1000:
+        badges.append("🌌 Eternal Ninja")
     return badges
 
 # === Study Bot Commands ===
@@ -533,11 +583,11 @@ def handle_summary(username, userid):
 
         hours = total_minutes // 60
         minutes = total_minutes % 60
-        return (f"📊 {username} 's Summary: "
-                f"⏱️ Study Time: {hours}h {minutes}m "
+        return (f"📊 Today’s Summary for {username} "
+                f"⏱️ Total Study Time: {hours}h {minutes}m "
                 f"⚜️ XP: {total_xp} "
-                f"✅ Completed: {completed_tasks} "
-                f"🕒 Pending: {pending_tasks}")
+                f"✅ Completed Task: {completed_tasks} "
+                f"🕒 Pending Task: {pending_tasks}")
     except Exception as e:
         return f"⚠️ Error generating summary: {str(e)}"
 
@@ -699,7 +749,7 @@ def process_command(message, author_name, author_id):
     elif message_lower == "!comtask":
         return handle_comtask(author_name, author_id)
     elif message_lower == "!help":
-        return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ai (ask anything)")
+        return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ask <your question> (Stuck on something? Sunnie Study GPT is here to help—ask away)")
     
     return None
 
