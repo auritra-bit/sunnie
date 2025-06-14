@@ -413,7 +413,7 @@ def handle_attend(username, userid):
     update_user_xp(username, userid, 10, "Attendance")
     
     streak = calculate_streak(userid)
-    return f"✅ {username} , your attendance is logged and you earned 10 XP! 🔥 Daily Streak: {streak} days."
+    return f"✅ {username} ,your attendance is logged and you earned 10 XP! 🔥 Daily Streak: {streak} days."
 
 def handle_start(username, userid):
     if not SHEETS_ENABLED:
@@ -474,8 +474,8 @@ def handle_stop(username, userid):
 
         # Badge check
         badges = get_badges(duration_minutes)
-        badge_message = f" 🎖 {username} , you unlocked a badge: {badges[-1]}! Keep it up!" if badges else ""
-
+        badge_message = f"🎖 {username}, the badge {badges[-1]} has awakened through your silent training. ⚔️" if badges else ""
+        
         return f"👩🏻‍💻📓✍🏻 {username} , you studied for {duration_minutes} minutes and earned {xp_earned} XP.{badge_message}"
     
     except Exception as e:
@@ -483,11 +483,11 @@ def handle_stop(username, userid):
 
 def handle_rank(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username} , study features are currently unavailable."
+        return f"⚠️ {username} ,study features are currently unavailable."
     
     total_xp = get_user_total_xp(userid)
     user_rank = get_rank(total_xp)
-    return f"🏅 {username} , you have {total_xp} XP. Your rank is: {user_rank}"
+    return f"🏅 {username} ,total XP: {total_xp}. You now walk the shadowed path of the {user_rank}. The dojo watches in silence — your spirit grows sharper with every session."
 
 def handle_top():
     if not SHEETS_ENABLED:
