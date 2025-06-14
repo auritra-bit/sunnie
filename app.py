@@ -3,6 +3,7 @@ import time
 import threading
 import requests
 import pytchat
+import json
 from flask import Flask
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -10,13 +11,10 @@ from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-
-# YouTube API credentials
-ACCESS_TOKEN = os.getenv("YOUTUBE_ACCESS_TOKEN")
-REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN")
-CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET")
-VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
+# Load credentials from environment variable
+credentials = json.loads(os.getenv("PROJECTS_JSON", "[]"))
+current_index = 0
+ACCESS_TOKEN = None  # Will be generated using refresh token
 
 # === Google Sheet Setup ===
 SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "/etc/secrets/credentials.json")
@@ -169,21 +167,28 @@ def start_timer_system():
     
     print("✅ Timer message system started")
 
-def refresh_access_token():
-    global ACCESS_TOKEN
-    url = "https://oauth2.googleapis.com/token"
-    data = {
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": REFRESH_TOKEN,
-        "grant_type": "refresh_token"
-    }
-    response = requests.post(url, data=data)
-    if response.status_code == 200:
-        ACCESS_TOKEN = response.json()["access_token"]
-        print("✅ Access token refreshed.")
-    else:
-        print("❌ Failed to refresh token:", response.text)
+def refresh_access_token_auto():
+    global ACCESS_TOKEN, current_index
+
+    for _ in range(len(credentials)):
+        cred = credentials[current_index]
+        data = {
+            "client_id": cred["client_id"],
+            "client_secret": cred["client_secret"],
+            "refresh_token": cred["refresh_token"],
+            "grant_type": "refresh_token"
+        }
+        response = requests.post("https://oauth2.googleapis.com/token", data=data)
+        if response.status_code == 200:
+            ACCESS_TOKEN = response.json()["access_token"]
+            print(f"✅ Access token refreshed from: {cred['name']}")
+            return
+        else:
+            print(f"❌ Failed to refresh from {cred['name']}, trying next...")
+            current_index = (current_index + 1) % len(credentials)
+
+    print("❌ All tokens failed.")
+    ACCESS_TOKEN = None
 
 def send_message(video_id, message_text, access_token):
     url = "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet"
@@ -195,7 +200,7 @@ def send_message(video_id, message_text, access_token):
 
     if video_info.status_code != 200:
         print("❌ Failed to get video info. Trying token refresh.")
-        refresh_access_token()
+        refresh_access_token_auto()
         return
 
     live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
@@ -702,7 +707,10 @@ def run_bot():
         print("❌ Error: YOUTUBE_VIDEO_ID environment variable not set.")
         return
 
-    # Start timer system
+    # 🔁 Refresh access token before anything else
+    refresh_access_token_auto()
+
+    # ✅ Start timer system
     start_timer_system()
 
     chat = pytchat.create(video_id=VIDEO_ID)
