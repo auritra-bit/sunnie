@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 # Load credentials from environment variable
+VIDEO_ID = os.getenv("YOUTUBE_VIDEO_ID")
 credentials = json.loads(os.getenv("PROJECTS_JSON", "[]"))
 current_index = 0
 ACCESS_TOKEN = None  # Will be generated using refresh token
