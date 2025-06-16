@@ -30,9 +30,6 @@ scope = [
 active_reminders = []
 reminder_threads = []
 
-# Study buddy system variables
-buddy_requests = {}
-active_buddies = {}
 
 # Initialize Google Sheets client
 try:
@@ -58,6 +55,21 @@ try:
 except Exception as e:
     print(f"❌ Google Sheets connection failed: {e}")
     SHEETS_ENABLED = False
+
+# Add this after the goal_sheet initialization (around line 50-60)
+try:
+    buddy_sheet = spreadsheet.worksheet("buddy")
+except:
+    # If buddy sheet doesn't exist, create it
+    buddy_sheet = spreadsheet.add_worksheet(title="buddy", rows="1000", cols="8")
+    buddy_sheet.append_row(["RequesterUsername", "RequesterID", "TargetUsername", "TargetID", "Status", "RequestDate", "PairedDate", "BuddyType"])
+
+try:
+    buddy_requests_sheet = spreadsheet.worksheet("buddy_requests")
+except:
+    # If buddy requests sheet doesn't exist, create it
+    buddy_requests_sheet = spreadsheet.add_worksheet(title="buddy_requests", rows="1000", cols="5")
+    buddy_requests_sheet.append_row(["RequesterUsername", "RequesterID", "TargetUsername", "RequestDate", "Status"])
 
 # === Timer Message System ===
 # Global variables for tracking
@@ -242,6 +254,101 @@ def send_message(video_id, message_text, access_token):
         print("❌ Failed to send message:", response.text)
 
 # === Helper Functions ===
+
+def get_user_id_by_username(username):
+    """Try to find user ID from existing records"""
+    if not SHEETS_ENABLED:
+        return None
+    
+    try:
+        # Check attendance sheet first
+        records = attendance_sheet.get_all_records()
+        for row in records:
+            if str(row.get('Username', '')).lower() == username.lower():
+                return str(row.get('UserID', ''))
+        
+        # Check session sheet
+        records = session_sheet.get_all_records()
+        for row in records:
+            if str(row.get('Username', '')).lower() == username.lower():
+                return str(row.get('UserID', ''))
+        
+        # Check xp sheet
+        records = xp_sheet.get_all_records()
+        for row in records:
+            if str(row.get('Username', '')).lower() == username.lower():
+                return str(row.get('UserID', ''))
+                
+    except Exception as e:
+        print(f"Error finding user ID: {e}")
+    
+    return None
+
+def get_active_buddy(userid):
+    """Get user's current active buddy from buddy sheet"""
+    if not SHEETS_ENABLED:
+        return None
+    
+    try:
+        records = buddy_sheet.get_all_records()
+        for row in records:
+            if ((str(row.get('RequesterID')) == str(userid) or str(row.get('TargetID')) == str(userid)) 
+                and str(row.get('Status')) == 'Active'):
+                if str(row.get('RequesterID')) == str(userid):
+                    return {
+                        'buddy_id': str(row.get('TargetID')),
+                        'buddy_name': str(row.get('TargetUsername')),
+                        'paired_date': str(row.get('PairedDate'))
+                    }
+                else:
+                    return {
+                        'buddy_id': str(row.get('RequesterID')),
+                        'buddy_name': str(row.get('RequesterUsername')),
+                        'paired_date': str(row.get('PairedDate'))
+                    }
+    except Exception as e:
+        print(f"Error getting active buddy: {e}")
+    
+    return None
+
+def get_pending_buddy_request(username):
+    """Get pending buddy request for username"""
+    if not SHEETS_ENABLED:
+        return None
+    
+    try:
+        records = buddy_requests_sheet.get_all_records()
+        for i, row in enumerate(records):
+            if (str(row.get('TargetUsername', '')).lower() == username.lower() 
+                and str(row.get('Status')) == 'Pending'):
+                return {
+                    'index': i + 2,  # Sheet row index
+                    'requester_id': str(row.get('RequesterID')),
+                    'requester_name': str(row.get('RequesterUsername')),
+                    'request_date': str(row.get('RequestDate'))
+                }
+    except Exception as e:
+        print(f"Error getting pending request: {e}")
+    
+    return None
+
+def has_pending_request_to(target_username, requester_id):
+    """Check if requester already sent request to target"""
+    if not SHEETS_ENABLED:
+        return False
+    
+    try:
+        records = buddy_requests_sheet.get_all_records()
+        for row in records:
+            if (str(row.get('TargetUsername', '')).lower() == target_username.lower() 
+                and str(row.get('RequesterID')) == str(requester_id)
+                and str(row.get('Status')) == 'Pending'):
+                return True
+    except Exception as e:
+        print(f"Error checking pending request: {e}")
+    
+    return False
+
 def update_user_xp(username, userid, xp_earned, action_type):
     """Update or create user XP record in the xp sheet"""
     if not SHEETS_ENABLED:
@@ -393,6 +500,8 @@ def get_badges(total_minutes):
         badges.append("🌌 Eternal Ninja")
     return badges
 
+
+
 def parse_reminder_time(text):
     """Parse reminder time from text like '30 min', '2 hour', '45 minutes', etc."""
     text = text.lower().strip()
@@ -475,158 +584,142 @@ def handle_remind(username, userid, remind_text):
     return f"⏰ {username} , reminder set for {time_text}{message_part}!"
 
 # ============== STUDY BUDDY SYSTEM FUNCTIONS ==============
-
-def handle_buddy(username, userid, buddy_command):
-    """Handle buddy system commands"""
-    global buddy_requests, active_buddies
-    
-    if not buddy_command:
-        # Show buddy status
-        if userid in active_buddies:
-            buddy_info = active_buddies[userid]
-            return f"👥 {username}, you're buddied with {buddy_info['buddy_name']} since {buddy_info['paired_date'][:10]}"
-        else:
-            return f"👥 {username}, you don't have a study buddy. Use !buddy @username or !buddy find"
-    
-    command_parts = buddy_command.strip().split()
-    action = command_parts[0].lower()
-    
-    if action == "find":
-        return handle_buddy_find(username, userid)
-    elif action == "accept":
-        return handle_buddy_accept(username, userid)
-    elif action == "decline":
-        return handle_buddy_decline(username, userid)
-    elif action == "remove":
-        return handle_buddy_remove(username, userid)
-    elif action == "stats":
-        return handle_buddy_stats(username, userid)
-    elif action.startswith("@") or len(command_parts) > 1:
-        # Buddy request to specific user
-        target_name = action[1:] if action.startswith("@") else " ".join(command_parts)
-        return handle_buddy_request(username, userid, target_name)
-    else:
-        return f"⚠️ {username}, use: !buddy @username, !buddy find, !buddy accept, !buddy decline, !buddy remove, or !buddy stats"
-
 def handle_buddy_request(username, userid, target_name):
     """Send buddy request to specific user"""
-    global buddy_requests, active_buddies
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, buddy features are currently unavailable."
     
-    if userid in active_buddies:
+    # Check if user already has a buddy
+    if get_active_buddy(userid):
         return f"⚠️ {username}, you already have a study buddy! Use !buddy remove first."
     
-    # For demo purposes, we'll store requests by username since we don't have user lookup
-    request_key = target_name.lower().replace("@", "")
+    # Clean target name
+    target_name = target_name.lower().replace("@", "").strip()
     
-    buddy_requests[request_key] = {
-        'requester_id': userid,
-        'requester_name': username,
-        'target_name': target_name,
-        'timestamp': datetime.now()
-    }
+    # Check if already sent request to this user
+    if has_pending_request_to(target_name, userid):
+        return f"⚠️ {username}, you already sent a request to {target_name}. Wait for their response."
     
-    return f"📨 {username}, buddy request sent to {target_name}! They can use !buddy accept to become your study buddy."
-
-def handle_buddy_find(username, userid):
-    """Find available study buddies"""
-    if userid in active_buddies:
-        return f"⚠️ {username}, you already have a study buddy! Use !buddy remove first."
+    # Get target user ID (optional, for better tracking)
+    target_id = get_user_id_by_username(target_name) or "unknown"
     
-    return f"👥 {username}, looking for study buddies! Other users can send you a request with !buddy {username}"
+    try:
+        # Add request to buddy_requests sheet
+        buddy_requests_sheet.append_row([
+            username,
+            userid,
+            target_name,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Pending"
+        ])
+        
+        return f"📨 {username}, buddy request sent to {target_name}! They can use !buddy accept to become your study buddy."
+    except Exception as e:
+        return f"⚠️ Error sending buddy request: {str(e)}"
 
 def handle_buddy_accept(username, userid):
     """Accept incoming buddy request"""
-    global buddy_requests, active_buddies
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, buddy features are currently unavailable."
     
-    if userid in active_buddies:
+    # Check if user already has a buddy
+    if get_active_buddy(userid):
         return f"⚠️ {username}, you already have a study buddy!"
     
-    # Find request for this user
-    request_key = username.lower()
-    if request_key not in buddy_requests:
+    # Find pending request
+    request = get_pending_buddy_request(username)
+    if not request:
         return f"⚠️ {username}, you don't have any pending buddy requests."
     
-    request = buddy_requests[request_key]
     requester_id = request['requester_id']
     requester_name = request['requester_name']
     
     # Check if requester already has a buddy
-    if requester_id in active_buddies:
-        del buddy_requests[request_key]
+    if get_active_buddy(requester_id):
+        # Update request status to expired
+        buddy_requests_sheet.update_cell(request['index'], 5, "Expired")
         return f"⚠️ {username}, {requester_name} already found another study buddy."
     
-    # Create buddy pair
-    buddy_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    active_buddies[userid] = {
-        'buddy_id': requester_id,
-        'buddy_name': requester_name,
-        'paired_date': buddy_date
-    }
-    
-    active_buddies[requester_id] = {
-        'buddy_id': userid,
-        'buddy_name': username,
-        'paired_date': buddy_date
-    }
-    
-    # Remove the request
-    del buddy_requests[request_key]
-    
-    return f"🤝 {username} and {requester_name} are now study buddies! Use !buddy stats to compare progress."
+    try:
+        # Create buddy pair in buddy sheet
+        buddy_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        buddy_sheet.append_row([
+            requester_name,
+            requester_id,
+            username,
+            userid,
+            "Active",
+            request['request_date'],
+            buddy_date,
+            "Mutual"
+        ])
+        
+        # Update request status to accepted
+        buddy_requests_sheet.update_cell(request['index'], 5, "Accepted")
+        
+        return f"🤝 {username} and {requester_name} are now study buddies! Use !buddy stats to compare progress."
+    except Exception as e:
+        return f"⚠️ Error accepting buddy request: {str(e)}"
 
 def handle_buddy_decline(username, userid):
     """Decline incoming buddy request"""
-    global buddy_requests
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, buddy features are currently unavailable."
     
-    request_key = username.lower()
-    if request_key in buddy_requests:
-        requester_name = buddy_requests[request_key]['requester_name']
-        del buddy_requests[request_key]
-        return f"❌ {username}, you declined the buddy request from {requester_name}."
-    else:
+    request = get_pending_buddy_request(username)
+    if not request:
         return f"⚠️ {username}, you don't have any pending buddy requests."
+    
+    try:
+        # Update request status to declined
+        buddy_requests_sheet.update_cell(request['index'], 5, "Declined")
+        
+        return f"❌ {username}, you declined the buddy request from {request['requester_name']}."
+    except Exception as e:
+        return f"⚠️ Error declining buddy request: {str(e)}"
 
 def handle_buddy_remove(username, userid):
     """Remove current study buddy"""
-    global active_buddies
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, buddy features are currently unavailable."
     
-    if userid not in active_buddies:
+    buddy_info = get_active_buddy(userid)
+    if not buddy_info:
         return f"⚠️ {username}, you don't have a study buddy to remove."
     
-    buddy_info = active_buddies[userid]
-    buddy_id = buddy_info['buddy_id']
-    buddy_name = buddy_info['buddy_name']
-    
-    # Remove both sides of the buddy relationship
-    del active_buddies[userid]
-    if buddy_id in active_buddies:
-        del active_buddies[buddy_id]
-    
-    return f"💔 {username}, you're no longer study buddies with {buddy_name}."
+    try:
+        # Find and update buddy record
+        records = buddy_sheet.get_all_records()
+        for i, row in enumerate(records):
+            if ((str(row.get('RequesterID')) == str(userid) or str(row.get('TargetID')) == str(userid)) 
+                and str(row.get('Status')) == 'Active'):
+                buddy_sheet.update_cell(i + 2, 5, "Removed")  # Status column
+                break
+        
+        return f"💔 {username}, you're no longer study buddies with {buddy_info['buddy_name']}."
+    except Exception as e:
+        return f"⚠️ Error removing buddy: {str(e)}"
 
 def handle_buddy_stats(username, userid):
     """Compare stats with study buddy"""
-    global active_buddies
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, buddy features are currently unavailable."
     
-    if userid not in active_buddies:
+    buddy_info = get_active_buddy(userid)
+    if not buddy_info:
         return f"⚠️ {username}, you don't have a study buddy. Use !buddy find or !buddy @username"
     
-    buddy_info = active_buddies[userid]
     buddy_name = buddy_info['buddy_name']
     buddy_id = buddy_info['buddy_id']
     
-    # Get your stats
+    # Get stats (same as before)
     your_xp = get_user_total_xp(userid)
     your_streak = calculate_streak(userid)
-    
-    # Get buddy's stats  
     buddy_xp = get_user_total_xp(buddy_id)
     buddy_streak = calculate_streak(buddy_id)
     
-    # Calculate study time for both (simplified version)
     try:
-        session_records = session_sheet.get_all_records() if SHEETS_ENABLED else []
+        session_records = session_sheet.get_all_records()
         your_time = sum(int(row.get('Duration', 0)) for row in session_records 
                        if str(row.get('UserID')) == str(userid) and row.get('Status') == 'Completed')
         buddy_time = sum(int(row.get('Duration', 0)) for row in session_records 
@@ -644,18 +737,17 @@ def handle_buddy_stats(username, userid):
 
 def handle_buddy_progress(username, userid):
     """Compare last study session with study buddy"""
-    global active_buddies
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, buddy features are currently unavailable."
     
-    if userid not in active_buddies:
+    buddy_info = get_active_buddy(userid)
+    if not buddy_info:
         return f"⚠️ {username}, you don't have a study buddy. Use !buddy find or !buddy @username to get one!"
     
-    buddy_info = active_buddies[userid]
     buddy_name = buddy_info['buddy_name']
     buddy_id = buddy_info['buddy_id']
     
-    if not SHEETS_ENABLED:
-        return f"⚠️ {username}, study features are currently unavailable."
-    
+    # Rest of the function remains the same as your original
     try:
         session_records = session_sheet.get_all_records()
         
@@ -716,7 +808,7 @@ def handle_buddy_progress(username, userid):
         
     except Exception as e:
         return f"⚠️ Error comparing buddy progress: {str(e)}"
-
+        
 # === Study Bot Commands ===
 def handle_attend(username, userid):
     if not SHEETS_ENABLED:
