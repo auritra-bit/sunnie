@@ -34,10 +34,6 @@ reminder_threads = []
 buddy_requests = {}
 active_buddies = {}
 
-# Add these lines with other global variables
-active_pomodoros = {}  # Store active pomodoro sessions by user ID
-pomodoro_threads = []  # Store pomodoro thread references
-
 # Initialize Google Sheets client
 try:
     client = gspread.service_account(filename=SERVICE_ACCOUNT_FILE)
@@ -978,172 +974,6 @@ def handle_comtask(username, userid):
     except Exception as e:
         return f"⚠️ Error fetching completed tasks: {str(e)}"
 
-def parse_pomodoro_time(text):
-    """Parse time from text, return minutes"""
-    text = text.lower().strip()
-    
-    # If just a number, assume minutes
-    if text.isdigit():
-        return int(text)
-    
-    # Pattern for numbers followed by time units
-    patterns = [
-        (r'(\d+)\s*(?:min|minute|minutes|m)', 1),     # minutes
-        (r'(\d+)\s*(?:h|hr|hour|hours)', 60),        # hours
-        (r'(\d+)\s*(?:sec|second|seconds|s)', 1/60), # seconds
-    ]
-    
-    for pattern, multiplier in patterns:
-        match = re.search(pattern, text)
-        if match:
-            number = int(match.group(1))
-            return int(number * multiplier)
-    
-    return None
-
-def pomodoro_worker(username, userid, session_duration, total_sessions, break_duration):
-    """Background worker for pomodoro timer"""
-    global active_pomodoros
-    
-    try:
-        for session_num in range(1, total_sessions + 1):
-            if userid not in active_pomodoros:
-                # User cancelled the pomodoro
-                return
-            
-            # Update current session info
-            active_pomodoros[userid]['current_session'] = session_num
-            active_pomodoros[userid]['status'] = 'studying'
-            
-            # Study session
-            send_message(VIDEO_ID, f"🍅 {username}, Pomodoro session {session_num}/{total_sessions} started! Focus time: {session_duration} minutes", ACCESS_TOKEN)
-            
-            # Wait for session duration
-            time.sleep(session_duration * 60)
-            
-            # Check if pomodoro is still active
-            if userid not in active_pomodoros:
-                return
-            
-            # Session completed
-            send_message(VIDEO_ID, f"✅ {username}, session {session_num} completed! Great work! 👏", ACCESS_TOKEN)
-            
-            # Award XP for completed session
-            update_user_xp(username, userid, session_duration * 2, "Pomodoro Session")
-            
-            # If not the last session, start break
-            if session_num < total_sessions:
-                active_pomodoros[userid]['status'] = 'break'
-                send_message(VIDEO_ID, f"☕ {username}, time for a {break_duration}-minute break! Relax and recharge 😌", ACCESS_TOKEN)
-                
-                # Wait for break duration
-                time.sleep(break_duration * 60)
-                
-                # Check if pomodoro is still active
-                if userid not in active_pomodoros:
-                    return
-                
-                # Break completed
-                send_message(VIDEO_ID, f"⏰ {username}, break time is over! Ready for session {session_num + 1}? 💪", ACCESS_TOKEN)
-        
-        # All sessions completed
-        total_study_time = session_duration * total_sessions
-        bonus_xp = 20 if total_sessions >= 4 else 10
-        update_user_xp(username, userid, bonus_xp, "Pomodoro Completion Bonus")
-        
-        send_message(VIDEO_ID, f"🎉 {username}, congratulations! You completed all {total_sessions} Pomodoro sessions! Total study time: {total_study_time} minutes. Bonus: +{bonus_xp} XP! 🏆", ACCESS_TOKEN)
-        
-        # Remove from active pomodoros
-        if userid in active_pomodoros:
-            del active_pomodoros[userid]
-            
-    except Exception as e:
-        print(f"❌ Error in pomodoro worker: {e}")
-        # Clean up on error
-        if userid in active_pomodoros:
-            del active_pomodoros[userid]
-
-def handle_pomo(username, userid, pomo_text):
-    """Handle pomodoro timer commands"""
-    global active_pomodoros, pomodoro_threads
-    
-    if not pomo_text or len(pomo_text.strip()) < 1:
-        return f"⚠️ {username}, use: !pomo 25 4 5 (25min sessions, 4 total, 5min breaks) or !pomo status or !pomo stop"
-    
-    text = pomo_text.strip()
-    
-    # Handle status command
-    if text.lower() == "status":
-        if userid in active_pomodoros:
-            pomo = active_pomodoros[userid]
-            status_emoji = "📚" if pomo['status'] == 'studying' else "☕"
-            return f"{status_emoji} {username}, Pomodoro active: Session {pomo['current_session']}/{pomo['total_sessions']} - Status: {pomo['status'].title()}"
-        else:
-            return f"⚠️ {username}, you don't have an active Pomodoro timer."
-    
-    # Handle stop command
-    if text.lower() == "stop":
-        if userid in active_pomodoros:
-            del active_pomodoros[userid]
-            return f"🛑 {username}, your Pomodoro timer has been stopped."
-        else:
-            return f"⚠️ {username}, you don't have an active Pomodoro timer to stop."
-    
-    # Check if user already has active pomodoro
-    if userid in active_pomodoros:
-        return f"⚠️ {username}, you already have an active Pomodoro! Use !pomo stop to cancel it first."
-    
-    # Parse parameters: session_duration total_sessions break_duration
-    params = text.split()
-    
-    if len(params) != 3:
-        return f"⚠️ {username}, format: !pomo <session_minutes> <total_sessions> <break_minutes>. Example: !pomo 25 4 5"
-    
-    try:
-        session_duration = parse_pomodoro_time(params[0])
-        total_sessions = int(params[1])
-        break_duration = parse_pomodoro_time(params[2])
-        
-        if not session_duration or not break_duration:
-            return f"⚠️ {username}, I couldn't parse the time values. Use numbers like: !pomo 25 4 5"
-        
-        # Validation
-        if session_duration < 5 or session_duration > 120:
-            return f"⚠️ {username}, session duration must be between 5-120 minutes."
-        
-        if total_sessions < 1 or total_sessions > 12:
-            return f"⚠️ {username}, total sessions must be between 1-12."
-        
-        if break_duration < 1 or break_duration > 60:
-            return f"⚠️ {username}, break duration must be between 1-60 minutes."
-        
-    except ValueError:
-        return f"⚠️ {username}, invalid format. Use: !pomo 25 4 5 (numbers only for sessions)"
-    
-    # Store pomodoro info
-    active_pomodoros[userid] = {
-        'username': username,
-        'session_duration': session_duration,
-        'total_sessions': total_sessions,
-        'break_duration': break_duration,
-        'current_session': 0,
-        'status': 'preparing',
-        'start_time': datetime.now()
-    }
-    
-    # Start pomodoro thread
-    pomo_thread = threading.Thread(
-        target=pomodoro_worker,
-        args=(username, userid, session_duration, total_sessions, break_duration),
-        daemon=True
-    )
-    pomo_thread.start()
-    pomodoro_threads.append(pomo_thread)
-    
-    total_time = (session_duration * total_sessions) + (break_duration * (total_sessions - 1))
-    return f"🍅 {username}, Pomodoro timer started! {total_sessions} sessions of {session_duration}min with {break_duration}min breaks. Total time: ~{total_time}min. Use !pomo status or !pomo stop"
-
-
 def process_command(message, author_name, author_id):
     """Process study bot commands from chat messages"""
     message_lower = message.lower().strip()
@@ -1183,9 +1013,6 @@ def process_command(message, author_name, author_id):
     elif message_lower == "!buddy" or message_lower.startswith("!buddy "):
         buddy_command = message[7:] if len(message) > 7 else ""
         return handle_buddy(author_name, author_id, buddy_command)
-    elif message_lower == "!pomo" or message_lower.startswith("!pomo "):
-        pomo_command = message[6:] if len(message) > 6 else ""
-        return handle_pomo(author_name, author_id, pomo_command)
     elif message_lower == "!help":
         return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ask <your question> (Stuck on something? Sunnie Study GPT is here to help—ask away)")
     
