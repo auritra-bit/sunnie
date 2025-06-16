@@ -808,6 +808,45 @@ def handle_buddy_progress(username, userid):
         
     except Exception as e:
         return f"⚠️ Error comparing buddy progress: {str(e)}"
+
+def handle_buddy(username, userid, buddy_command):
+    """Main buddy command handler that routes to specific buddy functions"""
+    if not buddy_command or buddy_command.strip() == "":
+        # Show buddy status or help
+        buddy_info = get_active_buddy(userid)
+        if buddy_info:
+            return f"🤝 {username}, you're study buddies with {buddy_info['buddy_name']} (since {buddy_info['paired_date']}). Use !buddy stats or !buddy remove"
+        else:
+            pending_request = get_pending_buddy_request(username)
+            if pending_request:
+                return f"📨 {username}, {pending_request['requester_name']} wants to be your study buddy! Use !buddy accept or !buddy decline"
+            else:
+                return f"👋 {username}, you don't have a study buddy. Use !buddy @username to send a request or !buddy accept if someone sent you one."
+    
+    buddy_command = buddy_command.strip().lower()
+    
+    # Handle different buddy commands
+    if buddy_command == "accept":
+        return handle_buddy_accept(username, userid)
+    elif buddy_command == "decline":
+        return handle_buddy_decline(username, userid)
+    elif buddy_command == "remove":
+        return handle_buddy_remove(username, userid)
+    elif buddy_command == "stats":
+        return handle_buddy_stats(username, userid)
+    elif buddy_command.startswith("@") or buddy_command.startswith("find "):
+        # Extract target username
+        if buddy_command.startswith("@"):
+            target_name = buddy_command[1:].strip()
+        else:  # starts with "find "
+            target_name = buddy_command[5:].strip()
+        
+        if not target_name:
+            return f"⚠️ {username}, please specify a username: !buddy @username"
+        
+        return handle_buddy_request(username, userid, target_name)
+    else:
+        return f"⚠️ {username}, buddy commands: !buddy @username, !buddy accept, !buddy decline, !buddy remove, !buddy stats"
         
 # === Study Bot Commands ===
 def handle_attend(username, userid):
