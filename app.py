@@ -421,7 +421,7 @@ def reminder_worker(username, userid, message, delay_minutes):
         global active_reminders
         reminder_key = f"{userid}_{int(time.time())}"
         
-        reminder_text = f"⏰ {username}, reminder: {message}" if message else f"⏰ {username}, your {delay_minutes}-minute reminder is up!"
+        reminder_text = f"⏰ {username} , reminder: {message}" if message else f"⏰ {username}, your {delay_minutes}-minute reminder is up!"
         send_message(VIDEO_ID, reminder_text, ACCESS_TOKEN)
         
         print(f"📢 Reminder sent to {username}: {message}")
@@ -432,7 +432,7 @@ def reminder_worker(username, userid, message, delay_minutes):
 def handle_remind(username, userid, remind_text):
     """Handle reminder commands"""
     if not remind_text or len(remind_text.strip()) < 1:
-        return f"⚠️ {username}, use: !remind 30 min take tea OR !remind 2 hour study break OR !remind 45 min"
+        return f"⚠️ {username} , use: !remind 30 min take tea OR !remind 2 hour study break OR !remind 45 min"
     
     text = remind_text.strip()
     
@@ -440,14 +440,14 @@ def handle_remind(username, userid, remind_text):
     delay_minutes = parse_reminder_time(text)
     
     if not delay_minutes:
-        return f"⚠️ {username}, I couldn't understand the time. Use: !remind 30 min, !remind 2 hour, etc."
+        return f"⚠️ {username} , I couldn't understand the time. Use: !remind 30 min, !remind 2 hour, etc."
     
     if delay_minutes > 1440:  # More than 24 hours
-        return f"⚠️ {username}, reminder time cannot exceed 24 hours."
+        return f"⚠️ {username} , reminder time cannot exceed 24 hours."
     
     if delay_minutes < 1:  # Less than 1 minute
-        return f"⚠️ {username}, reminder time must be at least 1 minute."
-    
+        return f"⚠️ {username} , reminder time must be at least 1 minute."
+
     # Extract message (everything after the time part)
     message_match = re.sub(r'\d+\s*(?:min|minute|minutes|h|hr|hour|hours|sec|second|seconds)', '', text, 1).strip()
     
@@ -472,7 +472,7 @@ def handle_remind(username, userid, remind_text):
             time_text += f" {mins} minute{'s' if mins != 1 else ''}"
     
     message_part = f" about '{message_match}'" if message_match else ""
-    return f"⏰ {username}, reminder set for {time_text}{message_part}!"
+    return f"⏰ {username} , reminder set for {time_text}{message_part}!"
 
 # ============== STUDY BUDDY SYSTEM FUNCTIONS ==============
 
@@ -641,6 +641,81 @@ def handle_buddy_stats(username, userid):
     return (f"👥 Buddy Stats Comparison:\n"
             f"📊 {username}: {your_xp} XP, {your_streak} day streak, {your_hours}h studied\n"
             f"📊 {buddy_name}: {buddy_xp} XP, {buddy_streak} day streak, {buddy_hours}h studied")
+
+def handle_buddy_progress(username, userid):
+    """Compare last study session with study buddy"""
+    global active_buddies
+    
+    if userid not in active_buddies:
+        return f"⚠️ {username}, you don't have a study buddy. Use !buddy find or !buddy @username to get one!"
+    
+    buddy_info = active_buddies[userid]
+    buddy_name = buddy_info['buddy_name']
+    buddy_id = buddy_info['buddy_id']
+    
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, study features are currently unavailable."
+    
+    try:
+        session_records = session_sheet.get_all_records()
+        
+        # Find your last completed session
+        your_last_session = None
+        for row in reversed(session_records):
+            if str(row.get('UserID')) == str(userid) and row.get('Status') == 'Completed':
+                your_last_session = {
+                    'duration': int(row.get('Duration', 0)),
+                    'date': row.get('EndTime', '')
+                }
+                break
+        
+        # Find buddy's last completed session
+        buddy_last_session = None
+        for row in reversed(session_records):
+            if str(row.get('UserID')) == str(buddy_id) and row.get('Status') == 'Completed':
+                buddy_last_session = {
+                    'duration': int(row.get('Duration', 0)),
+                    'date': row.get('EndTime', '')
+                }
+                break
+        
+        # Handle cases where one or both haven't studied
+        if not your_last_session and not buddy_last_session:
+            return f"😴 Neither {username} nor {buddy_name} have completed any study sessions yet. Time to hit the books! 📚"
+        
+        if not your_last_session:
+            buddy_hours = buddy_last_session['duration'] / 60
+            return f"⚡ {buddy_name} IS CRUSHING IT! They studied {buddy_hours:.1f}h in their last session while you haven't started yet. {username}, time to catch up! 🔥"
+        
+        if not buddy_last_session:
+            your_hours = your_last_session['duration'] / 60
+            return f"🏆 {username} DOMINATES! You studied {your_hours:.1f}h in your last session while {buddy_name} hasn't started yet. Keep leading! 💪"
+        
+        # Compare last sessions
+        your_minutes = your_last_session['duration']
+        buddy_minutes = buddy_last_session['duration']
+        your_hours = your_minutes / 60
+        buddy_hours = buddy_minutes / 60
+        
+        if your_minutes > buddy_minutes:
+            diff_minutes = your_minutes - buddy_minutes
+            diff_hours = diff_minutes / 60
+            if diff_minutes >= 60:
+                return f"🔥 {username} WINS THE LAST ROUND! You studied {your_hours:.1f}h vs {buddy_name}'s {buddy_hours:.1f}h (+{diff_hours:.1f}h more). You're on fire! 🚀 {buddy_name}, show them what you got!"
+            else:
+                return f"💪 {username} EDGES AHEAD! You studied {your_minutes}min vs {buddy_name}'s {buddy_minutes}min (+{diff_minutes}min more). Close battle! ⚔️ {buddy_name}, time for revenge!"
+        elif buddy_minutes > your_minutes:
+            diff_minutes = buddy_minutes - your_minutes
+            diff_hours = diff_minutes / 60
+            if diff_minutes >= 60:
+                return f"⚡ {buddy_name} TAKES THE CROWN! They studied {buddy_hours:.1f}h vs your {your_hours:.1f}h (+{diff_hours:.1f}h more). {username}, the comeback starts now! 🔥"
+            else:
+                return f"🎯 {buddy_name} STRIKES BACK! They studied {buddy_minutes}min vs your {your_minutes}min (+{diff_minutes}min more). {username}, don't let them win! 💥"
+        else:
+            return f"🤝 EPIC TIE! Both {username} and {buddy_name} studied exactly {your_hours:.1f}h in your last sessions. Who will break the deadlock next? The battle continues! ⚔️"
+        
+    except Exception as e:
+        return f"⚠️ Error comparing buddy progress: {str(e)}"
 
 # === Study Bot Commands ===
 def handle_attend(username, userid):
@@ -844,7 +919,7 @@ def handle_summary(username, userid):
         minutes = total_minutes % 60
         return (f"📊 Today’s Summary for {username} "
                 f"⏱️ Total Study Time: {hours}h {minutes}m "
-                f"⚜️ XP: {total_xp} "
+                f"⚜️ Total XP: {total_xp} "
                 f"✅ Completed Task: {completed_tasks} "
                 f"🕒 Pending Task: {pending_tasks}")
     except Exception as e:
@@ -1013,8 +1088,10 @@ def process_command(message, author_name, author_id):
     elif message_lower == "!buddy" or message_lower.startswith("!buddy "):
         buddy_command = message[7:] if len(message) > 7 else ""
         return handle_buddy(author_name, author_id, buddy_command)
+    elif message_lower == "!buddyprog":
+        return handle_buddy_progress(author_name, author_id)
     elif message_lower == "!help":
-        return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ask <your question> (Stuck on something? Sunnie Study GPT is here to help—ask away)")
+        return ("Commands: !attend !start !stop | !rank !top | !task !done !remove !comtask | !goal !complete | !summary !pending | !ask <your question> (Sunnie Study GPT is here to help—ask away)")
     
     return None
 
