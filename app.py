@@ -657,7 +657,7 @@ def handle_buddy_accept(username, userid):
         # Update request status to accepted
         buddy_requests_sheet.update_cell(request['index'], 5, "Accepted")
         
-        return f"🤝 {username} and {requester_name} are now study buddies! Use !buddy stats to compare progress."
+        return f"🤝 {username} and {requester_name} are now study buddies! Use !buddyprog & !buddy stats to compare progress."
     except Exception as e:
         return f"⚠️ Error accepting buddy request: {str(e)}"
 
