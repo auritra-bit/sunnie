@@ -56,6 +56,14 @@ except Exception as e:
     print(f"❌ Google Sheets connection failed: {e}")
     SHEETS_ENABLED = False
 
+# === REMINDER SHEET SETUP ===
+try:
+    reminder_sheet = spreadsheet.worksheet("reminders")
+except:
+    # If reminder sheet doesn't exist, create it
+    reminder_sheet = spreadsheet.add_worksheet(title="reminders", rows="1000", cols="9")
+    reminder_sheet.append_row(["Username", "UserID", "Message", "DelayMinutes", "CreatedTime", "TriggerTime", "Status", "SentTime", "ReminderID"])
+
 # Add this after the goal_sheet initialization (around line 50-60)
 try:
     buddy_sheet = spreadsheet.worksheet("buddy")
@@ -68,8 +76,8 @@ try:
     buddy_requests_sheet = spreadsheet.worksheet("buddy_requests")
 except:
     # If buddy requests sheet doesn't exist, create it
-    buddy_requests_sheet = spreadsheet.add_worksheet(title="buddy_requests", rows="1000", cols="5")
-    buddy_requests_sheet.append_row(["RequesterUsername", "RequesterID", "TargetUsername", "RequestDate", "Status"])
+    buddy_requests_sheet = spreadsheet.add_worksheet(title="buddy_requests", rows="1000", cols="6")
+    buddy_requests_sheet.append_row(["RequesterUsername", "RequesterID", "TargetUsername", "TargetID", "RequestDate", "Status"])
 
 # === Timer Message System ===
 # Global variables for tracking
@@ -246,7 +254,7 @@ def send_message(video_id, message_text, access_token):
 
     if response.status_code == 401:
         print("🔁 Token expired. Refreshing...")
-        refresh_access_token()
+        refresh_access_token_auto()
         send_message(video_id, message_text, ACCESS_TOKEN)
     elif response.status_code == 200:
         print(f"✅ Replied: {message_text}")
@@ -500,8 +508,6 @@ def get_badges(total_minutes):
         badges.append("🌌 Eternal Ninja")
     return badges
 
-
-
 def parse_reminder_time(text):
     """Parse reminder time from text like '30 min', '2 hour', '45 minutes', etc."""
     text = text.lower().strip()
@@ -521,27 +527,58 @@ def parse_reminder_time(text):
     
     return None
 
-def reminder_worker(username, userid, message, delay_minutes):
+def reminder_worker(username, userid, message, delay_minutes, reminder_id):
     """Background worker to send reminder after specified time"""
     try:
+        # Sleep for the specified time
         time.sleep(delay_minutes * 60)  # Convert minutes to seconds
         
-        # Check if reminder is still active (user might have cancelled)
-        global active_reminders
-        reminder_key = f"{userid}_{int(time.time())}"
+        # Check if reminder is still active in the sheet
+        records = reminder_sheet.get_all_records()
+        reminder_active = False
+        row_index = None
         
-        reminder_text = f"⏰ {username} , reminder: {message}" if message else f"⏰ {username}, your {delay_minutes}-minute reminder is up!"
+        for i, row in enumerate(records):
+            if (str(row.get('ReminderID')) == str(reminder_id) and 
+                str(row.get('Status')) == 'Active'):
+                reminder_active = True
+                row_index = i + 2  # Google Sheets row index
+                break
+        
+        if not reminder_active:
+            print(f"⚠️ Reminder {reminder_id} was cancelled or already sent")
+            return
+        
+        # Send the reminder
+        reminder_text = f"⏰ {username}, reminder: {message}" if message else f"⏰ {username}, your {delay_minutes}-minute reminder is up!"
         send_message(VIDEO_ID, reminder_text, ACCESS_TOKEN)
+        
+        # Update reminder status in sheet
+        if row_index:
+            reminder_sheet.update_cell(row_index, 7, "Sent")  # Status column
+            reminder_sheet.update_cell(row_index, 8, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))  # SentTime column
         
         print(f"📢 Reminder sent to {username}: {message}")
         
     except Exception as e:
         print(f"❌ Error in reminder worker: {e}")
+        # Mark reminder as failed in sheet if possible
+        try:
+            records = reminder_sheet.get_all_records()
+            for i, row in enumerate(records):
+                if str(row.get('ReminderID')) == str(reminder_id):
+                    reminder_sheet.update_cell(i + 2, 7, "Failed")
+                    break
+        except:
+            pass
 
 def handle_remind(username, userid, remind_text):
     """Handle reminder commands"""
+    if not SHEETS_ENABLED:
+        return f"⚠️ {username}, reminder features are currently unavailable."
+    
     if not remind_text or len(remind_text.strip()) < 1:
-        return f"⚠️ {username} , use: !remind 30 min take tea OR !remind 2 hour study break OR !remind 45 min"
+        return f"⚠️ {username}, use: !remind 30 min take tea OR !remind 2 hour study break OR !remind 45 min"
     
     text = remind_text.strip()
     
@@ -549,13 +586,13 @@ def handle_remind(username, userid, remind_text):
     delay_minutes = parse_reminder_time(text)
     
     if not delay_minutes:
-        return f"⚠️ {username} , I couldn't understand the time. Use: !remind 30 min, !remind 2 hour, etc."
+        return f"⚠️ {username}, I couldn't understand the time. Use: !remind 30 min, !remind 2 hour, etc."
     
     if delay_minutes > 1440:  # More than 24 hours
-        return f"⚠️ {username} , reminder time cannot exceed 24 hours."
+        return f"⚠️ {username}, reminder time cannot exceed 24 hours."
     
     if delay_minutes < 1:  # Less than 1 minute
-        return f"⚠️ {username} , reminder time must be at least 1 minute."
+        return f"⚠️ {username}, reminder time must be at least 1 minute."
 
     # Extract message (everything after the time part)
     message_match = re.sub(r'\d+\s*(?:min|minute|minutes|h|hr|hour|hours|sec|second|seconds)', '', text, 1).strip()
@@ -563,27 +600,144 @@ def handle_remind(username, userid, remind_text):
     # Remove common words like "later", "about", "me"
     message_match = re.sub(r'^(?:later|about|me|for|to)\s*', '', message_match).strip()
     
-    # Start reminder thread
-    reminder_thread = threading.Thread(
-        target=reminder_worker, 
-        args=(username, userid, message_match, delay_minutes),
-        daemon=True
-    )
-    reminder_thread.start()
-    reminder_threads.append(reminder_thread)
+    # Create unique reminder ID
+    reminder_id = f"{userid}_{int(time.time())}"
     
-    time_text = f"{delay_minutes} minute{'s' if delay_minutes != 1 else ''}"
-    if delay_minutes >= 60:
-        hours = delay_minutes // 60
-        mins = delay_minutes % 60
-        time_text = f"{hours} hour{'s' if hours != 1 else ''}"
-        if mins > 0:
-            time_text += f" {mins} minute{'s' if mins != 1 else ''}"
+    # Calculate trigger time
+    trigger_time = datetime.now() + timedelta(minutes=delay_minutes)
     
-    message_part = f" about '{message_match}'" if message_match else ""
-    return f"⏰ {username} , reminder set for {time_text}{message_part}!"
+    try:
+        # Save reminder to Google Sheet
+        reminder_sheet.append_row([
+            username,
+            userid,
+            message_match,
+            delay_minutes,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            trigger_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Active",
+            "",  # SentTime (empty initially)
+            reminder_id
+        ])
+        
+        # Start reminder thread
+        reminder_thread = threading.Thread(
+            target=reminder_worker, 
+            args=(username, userid, message_match, delay_minutes, reminder_id),
+            daemon=True
+        )
+        reminder_thread.start()
+        reminder_threads.append(reminder_thread)
+        
+        time_text = f"{delay_minutes} minute{'s' if delay_minutes != 1 else ''}"
+        if delay_minutes >= 60:
+            hours = delay_minutes // 60
+            mins = delay_minutes % 60
+            time_text = f"{hours} hour{'s' if hours != 1 else ''}"
+            if mins > 0:
+                time_text += f" {mins} minute{'s' if mins != 1 else ''}"
+        
+        message_part = f" about '{message_match}'" if message_match else ""
+        return f"⏰ {username}, reminder set for {time_text}{message_part}!"
+        
+    except Exception as e:
+        return f"⚠️ Error setting reminder: {str(e)}"
 
 # ============== STUDY BUDDY SYSTEM FUNCTIONS ==============
+def get_user_id_by_username(username):
+    """Try to find user ID from existing records"""
+    if not SHEETS_ENABLED:
+        return None
+    
+    try:
+        # Check attendance sheet first
+        records = attendance_sheet.get_all_records()
+        for row in records:
+            if str(row.get('Username', '')).lower() == username.lower():
+                return str(row.get('UserID', ''))
+        
+        # Check session sheet
+        records = session_sheet.get_all_records()
+        for row in records:
+            if str(row.get('Username', '')).lower() == username.lower():
+                return str(row.get('UserID', ''))
+        
+        # Check xp sheet
+        records = xp_sheet.get_all_records()
+        for row in records:
+            if str(row.get('Username', '')).lower() == username.lower():
+                return str(row.get('UserID', ''))
+                
+    except Exception as e:
+        print(f"Error finding user ID: {e}")
+    
+    return None
+
+def get_active_buddy(userid):
+    """Get user's current active buddy from buddy sheet"""
+    if not SHEETS_ENABLED:
+        return None
+    
+    try:
+        records = buddy_sheet.get_all_records()
+        for row in records:
+            if ((str(row.get('RequesterID', '')) == str(userid) or str(row.get('TargetID', '')) == str(userid)) 
+                and str(row.get('Status', '')) == 'Active'):
+                if str(row.get('RequesterID', '')) == str(userid):
+                    return {
+                        'buddy_id': str(row.get('TargetID', '')),
+                        'buddy_name': str(row.get('TargetUsername', '')),
+                        'paired_date': str(row.get('PairedDate', ''))
+                    }
+                else:
+                    return {
+                        'buddy_id': str(row.get('RequesterID', '')),
+                        'buddy_name': str(row.get('RequesterUsername', '')),
+                        'paired_date': str(row.get('PairedDate', ''))
+                    }
+    except Exception as e:
+        print(f"Error getting active buddy: {e}")
+    
+    return None
+
+def get_pending_buddy_request(username):
+    """Get pending buddy request for username"""
+    if not SHEETS_ENABLED:
+        return None
+    
+    try:
+        records = buddy_requests_sheet.get_all_records()
+        for i, row in enumerate(records):
+            if (str(row.get('TargetUsername', '')).lower() == username.lower() 
+                and str(row.get('Status', '')) == 'Pending'):
+                return {
+                    'index': i + 2,  # Sheet row index
+                    'requester_id': str(row.get('RequesterID', '')),
+                    'requester_name': str(row.get('RequesterUsername', '')),
+                    'request_date': str(row.get('RequestDate', ''))
+                }
+    except Exception as e:
+        print(f"Error getting pending request: {e}")
+    
+    return None
+
+def has_pending_request_to(target_username, requester_id):
+    """Check if requester already sent request to target"""
+    if not SHEETS_ENABLED:
+        return False
+    
+    try:
+        records = buddy_requests_sheet.get_all_records()
+        for row in records:
+            if (str(row.get('TargetUsername', '')).lower() == target_username.lower() 
+                and str(row.get('RequesterID', '')) == str(requester_id)
+                and str(row.get('Status', '')) == 'Pending'):
+                return True
+    except Exception as e:
+        print(f"Error checking pending request: {e}")
+    
+    return False
+
 def handle_buddy_request(username, userid, target_name):
     """Send buddy request to specific user"""
     if not SHEETS_ENABLED:
@@ -596,19 +750,23 @@ def handle_buddy_request(username, userid, target_name):
     # Clean target name
     target_name = target_name.lower().replace("@", "").strip()
     
+    # Check if target user exists (by trying to find their ID)
+    target_id = get_user_id_by_username(target_name)
+    if not target_id:
+        # Still allow request even if target_id not found, but use "unknown"
+        target_id = "unknown"
+    
     # Check if already sent request to this user
     if has_pending_request_to(target_name, userid):
         return f"⚠️ {username}, you already sent a request to {target_name}. Wait for their response."
     
-    # Get target user ID (optional, for better tracking)
-    target_id = get_user_id_by_username(target_name) or "unknown"
-    
     try:
-        # Add request to buddy_requests sheet
+        # Add request to buddy_requests sheet - FIXED: Added target_id parameter
         buddy_requests_sheet.append_row([
             username,
             userid,
             target_name,
+            target_id,  # This was missing in original code
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Pending"
         ])
@@ -637,7 +795,10 @@ def handle_buddy_accept(username, userid):
     # Check if requester already has a buddy
     if get_active_buddy(requester_id):
         # Update request status to expired
-        buddy_requests_sheet.update_cell(request['index'], 5, "Expired")
+        try:
+            buddy_requests_sheet.update_cell(request['index'], 6, "Expired")  # Status column
+        except:
+            pass
         return f"⚠️ {username}, {requester_name} already found another study buddy."
     
     try:
@@ -655,7 +816,7 @@ def handle_buddy_accept(username, userid):
         ])
         
         # Update request status to accepted
-        buddy_requests_sheet.update_cell(request['index'], 5, "Accepted")
+        buddy_requests_sheet.update_cell(request['index'], 6, "Accepted")  # Status column
         
         return f"🤝 {username} and {requester_name} are now study buddies! Use !buddyprog & !buddy stats to compare progress."
     except Exception as e:
@@ -672,7 +833,7 @@ def handle_buddy_decline(username, userid):
     
     try:
         # Update request status to declined
-        buddy_requests_sheet.update_cell(request['index'], 5, "Declined")
+        buddy_requests_sheet.update_cell(request['index'], 6, "Declined")  # Status column
         
         return f"❌ {username}, you declined the buddy request from {request['requester_name']}."
     except Exception as e:
@@ -691,8 +852,8 @@ def handle_buddy_remove(username, userid):
         # Find and update buddy record
         records = buddy_sheet.get_all_records()
         for i, row in enumerate(records):
-            if ((str(row.get('RequesterID')) == str(userid) or str(row.get('TargetID')) == str(userid)) 
-                and str(row.get('Status')) == 'Active'):
+            if ((str(row.get('RequesterID', '')) == str(userid) or str(row.get('TargetID', '')) == str(userid)) 
+                and str(row.get('Status', '')) == 'Active'):
                 buddy_sheet.update_cell(i + 2, 5, "Removed")  # Status column
                 break
         
@@ -712,7 +873,7 @@ def handle_buddy_stats(username, userid):
     buddy_name = buddy_info['buddy_name']
     buddy_id = buddy_info['buddy_id']
     
-    # Get stats (same as before)
+    # Get stats
     your_xp = get_user_total_xp(userid)
     your_streak = calculate_streak(userid)
     buddy_xp = get_user_total_xp(buddy_id)
@@ -721,9 +882,9 @@ def handle_buddy_stats(username, userid):
     try:
         session_records = session_sheet.get_all_records()
         your_time = sum(int(row.get('Duration', 0)) for row in session_records 
-                       if str(row.get('UserID')) == str(userid) and row.get('Status') == 'Completed')
+                       if str(row.get('UserID', '')) == str(userid) and row.get('Status') == 'Completed')
         buddy_time = sum(int(row.get('Duration', 0)) for row in session_records 
-                        if str(row.get('UserID')) == str(buddy_id) and row.get('Status') == 'Completed')
+                        if str(row.get('UserID', '')) == str(buddy_id) and row.get('Status') == 'Completed')
         
         your_hours = your_time // 60
         buddy_hours = buddy_time // 60
@@ -747,14 +908,13 @@ def handle_buddy_progress(username, userid):
     buddy_name = buddy_info['buddy_name']
     buddy_id = buddy_info['buddy_id']
     
-    # Rest of the function remains the same as your original
     try:
         session_records = session_sheet.get_all_records()
         
         # Find your last completed session
         your_last_session = None
         for row in reversed(session_records):
-            if str(row.get('UserID')) == str(userid) and row.get('Status') == 'Completed':
+            if str(row.get('UserID', '')) == str(userid) and row.get('Status') == 'Completed':
                 your_last_session = {
                     'duration': int(row.get('Duration', 0)),
                     'date': row.get('EndTime', '')
@@ -764,7 +924,7 @@ def handle_buddy_progress(username, userid):
         # Find buddy's last completed session
         buddy_last_session = None
         for row in reversed(session_records):
-            if str(row.get('UserID')) == str(buddy_id) and row.get('Status') == 'Completed':
+            if str(row.get('UserID', '')) == str(buddy_id) and row.get('Status') == 'Completed':
                 buddy_last_session = {
                     'duration': int(row.get('Duration', 0)),
                     'date': row.get('EndTime', '')
