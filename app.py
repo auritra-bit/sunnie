@@ -550,7 +550,7 @@ def reminder_worker(username, userid, message, delay_minutes, reminder_id):
             return
         
         # Send the reminder
-        reminder_text = f"⏰ {username}, reminder: {message}" if message else f"⏰ {username}, your {delay_minutes}-minute reminder is up!"
+        reminder_text = f"⏰ {username} , reminder: {message}" if message else f"⏰ {username} , your {delay_minutes}-minute reminder is up!"
         send_message(VIDEO_ID, reminder_text, ACCESS_TOKEN)
         
         # Update reminder status in sheet
@@ -575,10 +575,10 @@ def reminder_worker(username, userid, message, delay_minutes, reminder_id):
 def handle_remind(username, userid, remind_text):
     """Handle reminder commands"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, reminder features are currently unavailable."
+        return f"⚠️ {username} ,reminder features are currently unavailable."
     
     if not remind_text or len(remind_text.strip()) < 1:
-        return f"⚠️ {username}, use: !remind 30 min take tea OR !remind 2 hour study break OR !remind 45 min"
+        return f"⚠️ {username} ,use: !remind 30 min take tea OR !remind 2 hour study break OR !remind 45 min"
     
     text = remind_text.strip()
     
@@ -586,13 +586,13 @@ def handle_remind(username, userid, remind_text):
     delay_minutes = parse_reminder_time(text)
     
     if not delay_minutes:
-        return f"⚠️ {username}, I couldn't understand the time. Use: !remind 30 min, !remind 2 hour, etc."
+        return f"⚠️ {username} ,I couldn't understand the time. Use: !remind 30 min, !remind 2 hour, etc."
     
     if delay_minutes > 1440:  # More than 24 hours
-        return f"⚠️ {username}, reminder time cannot exceed 24 hours."
+        return f"⚠️ {username} ,reminder time cannot exceed 24 hours."
     
     if delay_minutes < 1:  # Less than 1 minute
-        return f"⚠️ {username}, reminder time must be at least 1 minute."
+        return f"⚠️ {username} ,reminder time must be at least 1 minute."
 
     # Extract message (everything after the time part)
     message_match = re.sub(r'\d+\s*(?:min|minute|minutes|h|hr|hour|hours|sec|second|seconds)', '', text, 1).strip()
@@ -638,7 +638,7 @@ def handle_remind(username, userid, remind_text):
                 time_text += f" {mins} minute{'s' if mins != 1 else ''}"
         
         message_part = f" about '{message_match}'" if message_match else ""
-        return f"⏰ {username}, reminder set for {time_text}{message_part}!"
+        return f"⏰ {username} ,reminder set for {time_text}{message_part}!"
         
     except Exception as e:
         return f"⚠️ Error setting reminder: {str(e)}"
@@ -741,11 +741,11 @@ def has_pending_request_to(target_username, requester_id):
 def handle_buddy_request(username, userid, target_name):
     """Send buddy request to specific user"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, buddy features are currently unavailable."
+        return f"⚠️ {username} ,buddy features are currently unavailable."
     
     # Check if user already has a buddy
     if get_active_buddy(userid):
-        return f"⚠️ {username}, you already have a study buddy! Use !buddy remove first."
+        return f"⚠️ {username} ,you already have a study buddy! Use !buddy remove first."
     
     # Clean target name
     target_name = target_name.lower().replace("@", "").strip()
@@ -758,7 +758,7 @@ def handle_buddy_request(username, userid, target_name):
     
     # Check if already sent request to this user
     if has_pending_request_to(target_name, userid):
-        return f"⚠️ {username}, you already sent a request to {target_name}. Wait for their response."
+        return f"⚠️ {username} ,you already sent a request to {target_name}. Wait for their response."
     
     try:
         # Add request to buddy_requests sheet - FIXED: Added target_id parameter
@@ -771,23 +771,23 @@ def handle_buddy_request(username, userid, target_name):
             "Pending"
         ])
         
-        return f"📨 {username}, buddy request sent to {target_name}! They can use !buddy accept to become your study buddy."
+        return f"📨 {username} ,buddy request sent to {target_name}! They can use !buddy accept to become your study buddy."
     except Exception as e:
         return f"⚠️ Error sending buddy request: {str(e)}"
 
 def handle_buddy_accept(username, userid):
     """Accept incoming buddy request"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, buddy features are currently unavailable."
+        return f"⚠️ {username} ,buddy features are currently unavailable."
     
     # Check if user already has a buddy
     if get_active_buddy(userid):
-        return f"⚠️ {username}, you already have a study buddy!"
+        return f"⚠️ {username} ,you already have a study buddy!"
     
     # Find pending request
     request = get_pending_buddy_request(username)
     if not request:
-        return f"⚠️ {username}, you don't have any pending buddy requests."
+        return f"⚠️ {username} ,you don't have any pending buddy requests."
     
     requester_id = request['requester_id']
     requester_name = request['requester_name']
@@ -799,7 +799,7 @@ def handle_buddy_accept(username, userid):
             buddy_requests_sheet.update_cell(request['index'], 6, "Expired")  # Status column
         except:
             pass
-        return f"⚠️ {username}, {requester_name} already found another study buddy."
+        return f"⚠️ {username} ,{requester_name} already found another study buddy."
     
     try:
         # Create buddy pair in buddy sheet
@@ -825,28 +825,28 @@ def handle_buddy_accept(username, userid):
 def handle_buddy_decline(username, userid):
     """Decline incoming buddy request"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, buddy features are currently unavailable."
+        return f"⚠️ {username} ,buddy features are currently unavailable."
     
     request = get_pending_buddy_request(username)
     if not request:
-        return f"⚠️ {username}, you don't have any pending buddy requests."
+        return f"⚠️ {username} ,you don't have any pending buddy requests."
     
     try:
         # Update request status to declined
         buddy_requests_sheet.update_cell(request['index'], 6, "Declined")  # Status column
         
-        return f"❌ {username}, you declined the buddy request from {request['requester_name']}."
+        return f"❌ {username} ,you declined the buddy request from {request['requester_name']}."
     except Exception as e:
         return f"⚠️ Error declining buddy request: {str(e)}"
 
 def handle_buddy_remove(username, userid):
     """Remove current study buddy"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, buddy features are currently unavailable."
+        return f"⚠️ {username} ,buddy features are currently unavailable."
     
     buddy_info = get_active_buddy(userid)
     if not buddy_info:
-        return f"⚠️ {username}, you don't have a study buddy to remove."
+        return f"⚠️ {username} ,you don't have a study buddy to remove."
     
     try:
         # Find and update buddy record
@@ -857,18 +857,18 @@ def handle_buddy_remove(username, userid):
                 buddy_sheet.update_cell(i + 2, 5, "Removed")  # Status column
                 break
         
-        return f"💔 {username}, you're no longer study buddies with {buddy_info['buddy_name']}."
+        return f"💔 {username} ,you're no longer study buddies with {buddy_info['buddy_name']}."
     except Exception as e:
         return f"⚠️ Error removing buddy: {str(e)}"
 
 def handle_buddy_stats(username, userid):
     """Compare stats with study buddy"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, buddy features are currently unavailable."
+        return f"⚠️ {username} ,buddy features are currently unavailable."
     
     buddy_info = get_active_buddy(userid)
     if not buddy_info:
-        return f"⚠️ {username}, you don't have a study buddy. Use !buddy find or !buddy @username"
+        return f"⚠️ {username} ,you don't have a study buddy. Use !buddy find or !buddy @username"
     
     buddy_name = buddy_info['buddy_name']
     buddy_id = buddy_info['buddy_id']
@@ -893,17 +893,17 @@ def handle_buddy_stats(username, userid):
         buddy_hours = 0
     
     return (f"👥 Buddy Stats Comparison:\n"
-            f"📊 {username}: {your_xp} XP, {your_streak} day streak, {your_hours}h studied\n"
-            f"📊 {buddy_name}: {buddy_xp} XP, {buddy_streak} day streak, {buddy_hours}h studied")
+            f"📊 {username} :{your_xp} XP, {your_streak} day streak, {your_hours}h studied\n"
+            f"📊 {buddy_name} :{buddy_xp} XP, {buddy_streak} day streak, {buddy_hours}h studied")
 
 def handle_buddy_progress(username, userid):
     """Compare last study session with study buddy"""
     if not SHEETS_ENABLED:
-        return f"⚠️ {username}, buddy features are currently unavailable."
+        return f"⚠️ {username} ,buddy features are currently unavailable."
     
     buddy_info = get_active_buddy(userid)
     if not buddy_info:
-        return f"⚠️ {username}, you don't have a study buddy. Use !buddy find or !buddy @username to get one!"
+        return f"⚠️ {username} ,you don't have a study buddy. Use !buddy find or !buddy @username to get one!"
     
     buddy_name = buddy_info['buddy_name']
     buddy_id = buddy_info['buddy_id']
@@ -953,16 +953,16 @@ def handle_buddy_progress(username, userid):
             diff_minutes = your_minutes - buddy_minutes
             diff_hours = diff_minutes / 60
             if diff_minutes >= 60:
-                return f"🔥 {username} WINS THE LAST ROUND! You studied {your_hours:.1f}h vs {buddy_name}'s {buddy_hours:.1f}h (+{diff_hours:.1f}h more). You're on fire! 🚀 {buddy_name}, show them what you got!"
+                return f"🔥 {username} WINS THE LAST ROUND! You studied {your_hours:.1f}h vs {buddy_name} 's {buddy_hours:.1f}h (+{diff_hours:.1f}h more). You're on fire! 🚀 {buddy_name}, show them what you got!"
             else:
-                return f"💪 {username} EDGES AHEAD! You studied {your_minutes}min vs {buddy_name}'s {buddy_minutes}min (+{diff_minutes}min more). Close battle! ⚔️ {buddy_name}, time for revenge!"
+                return f"💪 {username} EDGES AHEAD! You studied {your_minutes}min vs {buddy_name} 's {buddy_minutes}min (+{diff_minutes}min more). Close battle! ⚔️ {buddy_name}, time for revenge!"
         elif buddy_minutes > your_minutes:
             diff_minutes = buddy_minutes - your_minutes
             diff_hours = diff_minutes / 60
             if diff_minutes >= 60:
-                return f"⚡ {buddy_name} TAKES THE CROWN! They studied {buddy_hours:.1f}h vs your {your_hours:.1f}h (+{diff_hours:.1f}h more). {username}, the comeback starts now! 🔥"
+                return f"⚡ {buddy_name} TAKES THE CROWN! They studied {buddy_hours:.1f}h vs your {your_hours:.1f}h (+{diff_hours:.1f}h more). {username} ,the comeback starts now! 🔥"
             else:
-                return f"🎯 {buddy_name} STRIKES BACK! They studied {buddy_minutes}min vs your {your_minutes}min (+{diff_minutes}min more). {username}, don't let them win! 💥"
+                return f"🎯 {buddy_name} STRIKES BACK! They studied {buddy_minutes}min vs your {your_minutes}min (+{diff_minutes}min more). {username} ,don't let them win! 💥"
         else:
             return f"🤝 EPIC TIE! Both {username} and {buddy_name} studied exactly {your_hours:.1f}h in your last sessions. Who will break the deadlock next? The battle continues! ⚔️"
         
@@ -975,13 +975,13 @@ def handle_buddy(username, userid, buddy_command):
         # Show buddy status or help
         buddy_info = get_active_buddy(userid)
         if buddy_info:
-            return f"🤝 {username}, you're study buddies with {buddy_info['buddy_name']} (since {buddy_info['paired_date']}). Use !buddy stats or !buddy remove"
+            return f"🤝 {username} ,you're study buddies with {buddy_info['buddy_name']} (since {buddy_info['paired_date']}). Use !buddy stats or !buddy remove"
         else:
             pending_request = get_pending_buddy_request(username)
             if pending_request:
-                return f"📨 {username}, {pending_request['requester_name']} wants to be your study buddy! Use !buddy accept or !buddy decline"
+                return f"📨 {username} ,{pending_request['requester_name']} wants to be your study buddy! Use !buddy accept or !buddy decline"
             else:
-                return f"👋 {username}, you don't have a study buddy. Use !buddy @username to send a request or !buddy accept if someone sent you one."
+                return f"👋 {username} ,you don't have a study buddy. Use !buddy @username to send a request or !buddy accept if someone sent you one."
     
     buddy_command = buddy_command.strip().lower()
     
@@ -1002,16 +1002,16 @@ def handle_buddy(username, userid, buddy_command):
             target_name = buddy_command[5:].strip()
         
         if not target_name:
-            return f"⚠️ {username}, please specify a username: !buddy @username"
+            return f"⚠️ {username} ,please specify a username: !buddy @username"
         
         return handle_buddy_request(username, userid, target_name)
     else:
-        return f"⚠️ {username}, buddy commands: !buddy @username, !buddy accept, !buddy decline, !buddy remove, !buddy stats"
+        return f"⚠️ {username} ,buddy commands: !buddy @username, !buddy accept, !buddy decline, !buddy remove, !buddy stats"
         
 # === Study Bot Commands ===
 def handle_attend(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username} , study features are currently unavailable."
+        return f"⚠️ {username} ,study features are currently unavailable."
     
     now = datetime.now()
     today_date = now.date()
@@ -1024,7 +1024,7 @@ def handle_attend(username, userid):
                 try:
                     row_date = datetime.strptime(str(row['Date']), "%Y-%m-%d %H:%M:%S").date()
                     if row_date == today_date:
-                        return f"⚠️ {username} , your attendance for today is already recorded! ✅"
+                        return f"⚠️ {username} ,your attendance for today is already recorded! ✅"
                 except ValueError:
                     continue
     except:
@@ -1042,7 +1042,7 @@ def handle_attend(username, userid):
 
 def handle_start(username, userid):
     if not SHEETS_ENABLED:
-        return f"⚠️ {username} , study features are currently unavailable."
+        return f"⚠️ {username} ,study features are currently unavailable."
     
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
