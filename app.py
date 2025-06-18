@@ -644,165 +644,65 @@ def handle_remind(username, userid, remind_text):
         return f"⚠️ Error setting reminder: {str(e)}"
 
 # ============== STUDY BUDDY SYSTEM FUNCTIONS ==============
-def get_user_id_by_username(username):
-    """Try to find user ID from existing records"""
-    if not SHEETS_ENABLED:
-        return None
-    
-    try:
-        # Check attendance sheet first
-        records = attendance_sheet.get_all_records()
-        for row in records:
-            if str(row.get('Username', '')).lower() == username.lower():
-                return str(row.get('UserID', ''))
-        
-        # Check session sheet
-        records = session_sheet.get_all_records()
-        for row in records:
-            if str(row.get('Username', '')).lower() == username.lower():
-                return str(row.get('UserID', ''))
-        
-        # Check xp sheet
-        records = xp_sheet.get_all_records()
-        for row in records:
-            if str(row.get('Username', '')).lower() == username.lower():
-                return str(row.get('UserID', ''))
-                
-    except Exception as e:
-        print(f"Error finding user ID: {e}")
-    
-    return None
-
-def get_active_buddy(userid):
-    """Get user's current active buddy from buddy sheet"""
-    if not SHEETS_ENABLED:
-        return None
-    
-    try:
-        records = buddy_sheet.get_all_records()
-        for row in records:
-            if ((str(row.get('RequesterID', '')) == str(userid) or str(row.get('TargetID', '')) == str(userid)) 
-                and str(row.get('Status', '')) == 'Active'):
-                if str(row.get('RequesterID', '')) == str(userid):
-                    return {
-                        'buddy_id': str(row.get('TargetID', '')),
-                        'buddy_name': str(row.get('TargetUsername', '')),
-                        'paired_date': str(row.get('PairedDate', ''))
-                    }
-                else:
-                    return {
-                        'buddy_id': str(row.get('RequesterID', '')),
-                        'buddy_name': str(row.get('RequesterUsername', '')),
-                        'paired_date': str(row.get('PairedDate', ''))
-                    }
-    except Exception as e:
-        print(f"Error getting active buddy: {e}")
-    
-    return None
-
-def get_pending_buddy_request(username):
-    """Get pending buddy request for username"""
+def get_pending_buddy_request(username, mode="incoming"):
+    """Get pending buddy request involving the user.
+    mode = "incoming" → return requests where user is the target (to accept)
+    mode = "outgoing" → return requests where user is the requester (sent)
+    """
     if not SHEETS_ENABLED:
         return None
     
     try:
         records = buddy_requests_sheet.get_all_records()
         for i, row in enumerate(records):
-            if (str(row.get('TargetUsername', '')).lower() == username.lower() 
-                and str(row.get('Status', '')) == 'Pending'):
+            requester = str(row.get('RequesterUsername', '')).lower()
+            target = str(row.get('TargetUsername', '')).lower()
+            status = str(row.get('Status', ''))
+
+            if mode == "incoming" and target == username.lower() and status == 'Pending':
                 return {
-                    'index': i + 2,  # Sheet row index
+                    'index': i + 2,
                     'requester_id': str(row.get('RequesterID', '')),
                     'requester_name': str(row.get('RequesterUsername', '')),
                     'request_date': str(row.get('RequestDate', ''))
                 }
+
+            if mode == "outgoing" and requester == username.lower() and status == 'Pending':
+                return {
+                    'index': i + 2,
+                    'target_name': str(row.get('TargetUsername', '')),
+                    'target_id': str(row.get('TargetID', '')),
+                    'request_date': str(row.get('RequestDate', ''))
+                }
     except Exception as e:
-        print(f"Error getting pending request: {e}")
+        print(f"Error getting buddy request: {e}")
     
     return None
 
-def has_pending_request_to(target_username, requester_id):
-    """Check if requester already sent request to target"""
-    if not SHEETS_ENABLED:
-        return False
-    
-    try:
-        records = buddy_requests_sheet.get_all_records()
-        for row in records:
-            if (str(row.get('TargetUsername', '')).lower() == target_username.lower() 
-                and str(row.get('RequesterID', '')) == str(requester_id)
-                and str(row.get('Status', '')) == 'Pending'):
-                return True
-    except Exception as e:
-        print(f"Error checking pending request: {e}")
-    
-    return False
-
-def handle_buddy_request(username, userid, target_name):
-    """Send buddy request to specific user"""
-    if not SHEETS_ENABLED:
-        return f"⚠️ {username} ,buddy features are currently unavailable."
-    
-    # Check if user already has a buddy
-    if get_active_buddy(userid):
-        return f"⚠️ {username} ,you already have a study buddy! Use !buddy remove first."
-    
-    # Clean target name
-    target_name = target_name.lower().replace("@", "").strip()
-    
-    # Check if target user exists (by trying to find their ID)
-    target_id = get_user_id_by_username(target_name)
-    if not target_id:
-        # Still allow request even if target_id not found, but use "unknown"
-        target_id = "unknown"
-    
-    # Check if already sent request to this user
-    if has_pending_request_to(target_name, userid):
-        return f"⚠️ {username} ,you already sent a request to {target_name}. Wait for their response."
-    
-    try:
-        # Add request to buddy_requests sheet - FIXED: Added target_id parameter
-        buddy_requests_sheet.append_row([
-            username,
-            userid,
-            target_name,
-            target_id,  # This was missing in original code
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Pending"
-        ])
-        
-        return f"📨 {username} ,buddy request sent to {target_name}! They can use !buddy accept to become your study buddy."
-    except Exception as e:
-        return f"⚠️ Error sending buddy request: {str(e)}"
-
 def handle_buddy_accept(username, userid):
-    """Accept incoming buddy request"""
     if not SHEETS_ENABLED:
         return f"⚠️ {username} ,buddy features are currently unavailable."
-    
+
     # Check if user already has a buddy
     if get_active_buddy(userid):
         return f"⚠️ {username} ,you already have a study buddy!"
-    
-    # Find pending request
-    request = get_pending_buddy_request(username)
+
+    request = get_pending_buddy_request(username, mode="incoming")
     if not request:
         return f"⚠️ {username} ,you don't have any pending buddy requests."
-    
+
     requester_id = request['requester_id']
     requester_name = request['requester_name']
-    
+
     # Check if requester already has a buddy
     if get_active_buddy(requester_id):
-        # Update request status to expired
         try:
-            buddy_requests_sheet.update_cell(request['index'], 6, "Expired")  # Status column
+            buddy_requests_sheet.update_cell(request['index'], 6, "Expired")
         except:
             pass
         return f"⚠️ {username} ,{requester_name} already found another study buddy."
-    
+
     try:
-        # Create buddy pair in buddy sheet
         buddy_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         buddy_sheet.append_row([
             requester_name,
@@ -814,178 +714,56 @@ def handle_buddy_accept(username, userid):
             buddy_date,
             "Mutual"
         ])
-        
-        # Update request status to accepted
-        buddy_requests_sheet.update_cell(request['index'], 6, "Accepted")  # Status column
-        
+        buddy_requests_sheet.update_cell(request['index'], 6, "Accepted")
         return f"🤝 {username} and {requester_name} are now study buddies! Use !buddyprog & !buddy stats to compare progress."
     except Exception as e:
         return f"⚠️ Error accepting buddy request: {str(e)}"
 
-def handle_buddy_decline(username, userid):
-    """Decline incoming buddy request"""
+def handle_buddy_request(username, userid, target_name):
     if not SHEETS_ENABLED:
         return f"⚠️ {username} ,buddy features are currently unavailable."
     
-    request = get_pending_buddy_request(username)
-    if not request:
-        return f"⚠️ {username} ,you don't have any pending buddy requests."
-    
-    try:
-        # Update request status to declined
-        buddy_requests_sheet.update_cell(request['index'], 6, "Declined")  # Status column
-        
-        return f"❌ {username} ,you declined the buddy request from {request['requester_name']}."
-    except Exception as e:
-        return f"⚠️ Error declining buddy request: {str(e)}"
+    if get_active_buddy(userid):
+        return f"⚠️ {username} ,you already have a study buddy! Use !buddy remove first."
 
-def handle_buddy_remove(username, userid):
-    """Remove current study buddy"""
-    if not SHEETS_ENABLED:
-        return f"⚠️ {username} ,buddy features are currently unavailable."
-    
-    buddy_info = get_active_buddy(userid)
-    if not buddy_info:
-        return f"⚠️ {username} ,you don't have a study buddy to remove."
-    
-    try:
-        # Find and update buddy record
-        records = buddy_sheet.get_all_records()
-        for i, row in enumerate(records):
-            if ((str(row.get('RequesterID', '')) == str(userid) or str(row.get('TargetID', '')) == str(userid)) 
-                and str(row.get('Status', '')) == 'Active'):
-                buddy_sheet.update_cell(i + 2, 5, "Removed")  # Status column
-                break
-        
-        return f"💔 {username} ,you're no longer study buddies with {buddy_info['buddy_name']}."
-    except Exception as e:
-        return f"⚠️ Error removing buddy: {str(e)}"
+    target_name_cleaned = target_name.lower().replace("@", "").strip()
 
-def handle_buddy_stats(username, userid):
-    """Compare stats with study buddy"""
-    if not SHEETS_ENABLED:
-        return f"⚠️ {username} ,buddy features are currently unavailable."
-    
-    buddy_info = get_active_buddy(userid)
-    if not buddy_info:
-        return f"⚠️ {username} ,you don't have a study buddy. Use !buddy find or !buddy @username"
-    
-    buddy_name = buddy_info['buddy_name']
-    buddy_id = buddy_info['buddy_id']
-    
-    # Get stats
-    your_xp = get_user_total_xp(userid)
-    your_streak = calculate_streak(userid)
-    buddy_xp = get_user_total_xp(buddy_id)
-    buddy_streak = calculate_streak(buddy_id)
-    
-    try:
-        session_records = session_sheet.get_all_records()
-        your_time = sum(int(row.get('Duration', 0)) for row in session_records 
-                       if str(row.get('UserID', '')) == str(userid) and row.get('Status') == 'Completed')
-        buddy_time = sum(int(row.get('Duration', 0)) for row in session_records 
-                        if str(row.get('UserID', '')) == str(buddy_id) and row.get('Status') == 'Completed')
-        
-        your_hours = your_time // 60
-        buddy_hours = buddy_time // 60
-    except:
-        your_hours = 0
-        buddy_hours = 0
-    
-    return (f"👥 Buddy Stats Comparison:\n"
-            f"📊 {username} :{your_xp} XP, {your_streak} day streak, {your_hours}h studied\n"
-            f"📊 {buddy_name} :{buddy_xp} XP, {buddy_streak} day streak, {buddy_hours}h studied")
+    if target_name_cleaned == username.lower():
+        return f"⚠️ {username} ,you cannot send a buddy request to yourself."
 
-def handle_buddy_progress(username, userid):
-    """Compare last study session with study buddy"""
-    if not SHEETS_ENABLED:
-        return f"⚠️ {username} ,buddy features are currently unavailable."
-    
-    buddy_info = get_active_buddy(userid)
-    if not buddy_info:
-        return f"⚠️ {username} ,you don't have a study buddy. Use !buddy find or !buddy @username to get one!"
-    
-    buddy_name = buddy_info['buddy_name']
-    buddy_id = buddy_info['buddy_id']
-    
+    target_id = get_user_id_by_username(target_name_cleaned) or "unknown"
+
+    if has_pending_request_to(target_name_cleaned, userid):
+        return f"⚠️ {username} ,you already sent a request to {target_name_cleaned}. Wait for their response."
+
     try:
-        session_records = session_sheet.get_all_records()
-        
-        # Find your last completed session
-        your_last_session = None
-        for row in reversed(session_records):
-            if str(row.get('UserID', '')) == str(userid) and row.get('Status') == 'Completed':
-                your_last_session = {
-                    'duration': int(row.get('Duration', 0)),
-                    'date': row.get('EndTime', '')
-                }
-                break
-        
-        # Find buddy's last completed session
-        buddy_last_session = None
-        for row in reversed(session_records):
-            if str(row.get('UserID', '')) == str(buddy_id) and row.get('Status') == 'Completed':
-                buddy_last_session = {
-                    'duration': int(row.get('Duration', 0)),
-                    'date': row.get('EndTime', '')
-                }
-                break
-        
-        # Handle cases where one or both haven't studied
-        if not your_last_session and not buddy_last_session:
-            return f"😴 Neither {username} nor {buddy_name} have completed any study sessions yet. Time to hit the books! 📚"
-        
-        if not your_last_session:
-            buddy_hours = buddy_last_session['duration'] / 60
-            return f"⚡ {buddy_name} IS CRUSHING IT! They studied {buddy_hours:.1f}h in their last session while you haven't started yet. {username}, time to catch up! 🔥"
-        
-        if not buddy_last_session:
-            your_hours = your_last_session['duration'] / 60
-            return f"🏆 {username} DOMINATES! You studied {your_hours:.1f}h in your last session while {buddy_name} hasn't started yet. Keep leading! 💪"
-        
-        # Compare last sessions
-        your_minutes = your_last_session['duration']
-        buddy_minutes = buddy_last_session['duration']
-        your_hours = your_minutes / 60
-        buddy_hours = buddy_minutes / 60
-        
-        if your_minutes > buddy_minutes:
-            diff_minutes = your_minutes - buddy_minutes
-            diff_hours = diff_minutes / 60
-            if diff_minutes >= 60:
-                return f"🔥 {username} WINS THE LAST ROUND! You studied {your_hours:.1f}h vs {buddy_name} 's {buddy_hours:.1f}h (+{diff_hours:.1f}h more). You're on fire! 🚀 {buddy_name}, show them what you got!"
-            else:
-                return f"💪 {username} EDGES AHEAD! You studied {your_minutes}min vs {buddy_name} 's {buddy_minutes}min (+{diff_minutes}min more). Close battle! ⚔️ {buddy_name}, time for revenge!"
-        elif buddy_minutes > your_minutes:
-            diff_minutes = buddy_minutes - your_minutes
-            diff_hours = diff_minutes / 60
-            if diff_minutes >= 60:
-                return f"⚡ {buddy_name} TAKES THE CROWN! They studied {buddy_hours:.1f}h vs your {your_hours:.1f}h (+{diff_hours:.1f}h more). {username} ,the comeback starts now! 🔥"
-            else:
-                return f"🎯 {buddy_name} STRIKES BACK! They studied {buddy_minutes}min vs your {your_minutes}min (+{diff_minutes}min more). {username} ,don't let them win! 💥"
-        else:
-            return f"🤝 EPIC TIE! Both {username} and {buddy_name} studied exactly {your_hours:.1f}h in your last sessions. Who will break the deadlock next? The battle continues! ⚔️"
-        
+        buddy_requests_sheet.append_row([
+            username,
+            userid,
+            target_name_cleaned,
+            target_id,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Pending"
+        ])
+        return f"📨 {username} ,buddy request sent to {target_name_cleaned}! They can use !buddy accept to become your study buddy."
     except Exception as e:
-        return f"⚠️ Error comparing buddy progress: {str(e)}"
+        return f"⚠️ Error sending buddy request: {str(e)}"
 
 def handle_buddy(username, userid, buddy_command):
     """Main buddy command handler that routes to specific buddy functions"""
     if not buddy_command or buddy_command.strip() == "":
-        # Show buddy status or help
         buddy_info = get_active_buddy(userid)
         if buddy_info:
             return f"🤝 {username} ,you're study buddies with {buddy_info['buddy_name']} (since {buddy_info['paired_date']}). Use !buddy stats or !buddy remove"
-        else:
-            pending_request = get_pending_buddy_request(username)
-            if pending_request:
-                return f"📨 {username} ,{pending_request['requester_name']} wants to be your study buddy! Use !buddy accept or !buddy decline"
-            else:
-                return f"👋 {username} ,you don't have a study buddy. Use !buddy @username to send a request or !buddy accept if someone sent you one."
-    
+        
+        incoming_request = get_pending_buddy_request(username, mode="incoming")
+        if incoming_request:
+            return f"📨 {username} ,{incoming_request['requester_name']} wants to be your study buddy! Use !buddy accept or !buddy decline"
+        
+        return f"👋 {username} ,you don't have a study buddy. Use !buddy @username to send a request or !buddy accept if someone sent you one."
+
     buddy_command = buddy_command.strip().lower()
-    
-    # Handle different buddy commands
+
     if buddy_command == "accept":
         return handle_buddy_accept(username, userid)
     elif buddy_command == "decline":
@@ -995,15 +773,9 @@ def handle_buddy(username, userid, buddy_command):
     elif buddy_command == "stats":
         return handle_buddy_stats(username, userid)
     elif buddy_command.startswith("@") or buddy_command.startswith("find "):
-        # Extract target username
-        if buddy_command.startswith("@"):
-            target_name = buddy_command[1:].strip()
-        else:  # starts with "find "
-            target_name = buddy_command[5:].strip()
-        
+        target_name = buddy_command[1:].strip() if buddy_command.startswith("@") else buddy_command[5:].strip()
         if not target_name:
             return f"⚠️ {username} ,please specify a username: !buddy @username"
-        
         return handle_buddy_request(username, userid, target_name)
     else:
         return f"⚠️ {username} ,buddy commands: !buddy @username, !buddy accept, !buddy decline, !buddy remove, !buddy stats"
