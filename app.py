@@ -1436,23 +1436,27 @@ def process_command(message, author_name, author_id):
 def run_bot():
     refresh_access_token_auto()
 
+    # Get the target channel ID from environment
     channel_id = os.getenv("YOUTUBE_CHANNEL_ID")
     if not channel_id:
-        print("❌ YOUTUBE_CHANNEL_ID not set.")
+        print("❌ Environment variable YOUTUBE_CHANNEL_ID not set.")
         return
 
+    # Auto-detect current live stream video ID
     video_id = get_live_video_id_by_channel(channel_id, ACCESS_TOKEN)
     if not video_id:
-        print("❌ No live video found on target channel.")
+        print("❌ No live video found on target channel. Retrying in 60 seconds...")
+        time.sleep(60)
         return
 
-    # Start the rest of the system
+    # Start chat + timers
     start_timer_system()
     chat = pytchat.create(video_id=video_id)
-    print("✅ Bot started...")
+    print(f"✅ Bot started. Watching live chat of video: {video_id}")
 
     while chat.is_alive():
-        for c in chat.get().sync_items():
+        chatdata = chat.get()
+        for c in chatdata.items:  # ✅ Only new, unread messages (no double replies)
             print(f"{c.author.name}: {c.message}")
             increment_chat_count()
 
