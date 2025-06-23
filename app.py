@@ -282,6 +282,32 @@ def send_message(video_id, message_text, access_token, retry_count=0):
     except Exception as e:
         print(f"❌ Exception in send_message: {str(e)}")
 
+def get_live_video_id_by_channel(channel_id, access_token):
+    """Get the live video ID for a public channel (not owned by the bot)"""
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "part": "id",
+        "channelId": channel_id,
+        "eventType": "live",
+        "type": "video"
+    }
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+    
+    if response.status_code == 200:
+        items = response.json().get("items", [])
+        if items:
+            return items[0]["id"]["videoId"]
+        else:
+            print("❌ No live video found on that channel.")
+            return None
+    else:
+        print(f"❌ Error fetching live video: {response.text}")
+        return None
+
 # === Helper Functions ===
 
 def get_user_id_by_username(username):
@@ -1408,37 +1434,38 @@ def process_command(message, author_name, author_id):
     return None
 
 def run_bot():
-    if not VIDEO_ID:
-        print("❌ Error: YOUTUBE_VIDEO_ID environment variable not set.")
-        return
-
-    # 🔁 Refresh access token before anything else
     refresh_access_token_auto()
 
-    # ✅ Start timer system
-    start_timer_system()
+    channel_id = os.getenv("YOUTUBE_CHANNEL_ID")
+    if not channel_id:
+        print("❌ YOUTUBE_CHANNEL_ID not set.")
+        return
 
-    chat = pytchat.create(video_id=VIDEO_ID)
+    video_id = get_live_video_id_by_channel(channel_id, ACCESS_TOKEN)
+    if not video_id:
+        print("❌ No live video found on target channel.")
+        return
+
+    # Start the rest of the system
+    start_timer_system()
+    chat = pytchat.create(video_id=video_id)
     print("✅ Bot started...")
 
     while chat.is_alive():
         for c in chat.get().sync_items():
             print(f"{c.author.name}: {c.message}")
-            
-            # Increment chat count for timer system
             increment_chat_count()
-            
-            # Handle original !hello command
+
             if "!hello" in c.message.lower():
                 reply = f"Hi {c.author.name} !"
-                send_message(VIDEO_ID, reply, ACCESS_TOKEN)
-            
-            # Handle study bot commands
+                send_message(video_id, reply, ACCESS_TOKEN)
+
             response = process_command(c.message, c.author.name, c.author.channelId)
             if response:
-                send_message(VIDEO_ID, response, ACCESS_TOKEN)
-                
+                send_message(video_id, response, ACCESS_TOKEN)
+
         time.sleep(1)
+
 
 @app.route("/")
 def home():
