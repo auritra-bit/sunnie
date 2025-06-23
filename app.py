@@ -221,92 +221,45 @@ def refresh_access_token_auto():
     print("❌ All tokens failed.")
     ACCESS_TOKEN = None
 
-def send_message(video_id, message_text, access_token, retry_count=0):
-    global current_index, ACCESS_TOKEN
+def send_message(video_id, message_text, access_token):
+    url = "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet"
 
-    if retry_count >= len(credentials):
-        print("❌ All credential projects exhausted. Cannot send message.")
+    video_info = requests.get(
+        f"https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id={video_id}",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    if video_info.status_code != 200:
+        print("❌ Failed to get video info. Trying token refresh.")
+        refresh_access_token_auto()
         return
 
-    try:
-        # Get live chat ID
-        video_info = requests.get(
-            f"https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id={video_id}",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
+    live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
 
-        if video_info.status_code != 200:
-            print("❌ Failed to get video info. Trying token refresh...")
-            current_index = (current_index + 1) % len(credentials)
-            refresh_access_token_auto()
-            send_message(video_id, message_text, ACCESS_TOKEN, retry_count + 1)
-            return
-
-        live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
-
-        # Prepare payload
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "snippet": {
-                "liveChatId": live_chat_id,
-                "type": "textMessageEvent",
-                "textMessageDetails": {
-                    "messageText": message_text
-                }
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "snippet": {
+            "liveChatId": live_chat_id,
+            "type": "textMessageEvent",
+            "textMessageDetails": {
+                "messageText": message_text
             }
         }
-
-        response = requests.post(
-            "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet",
-            headers=headers,
-            json=payload
-        )
-
-        if response.status_code == 200:
-            print(f"✅ Replied: {message_text}")
-        elif response.status_code == 401:
-            print("🔁 Token expired. Refreshing and retrying...")
-            refresh_access_token_auto()
-            send_message(video_id, message_text, ACCESS_TOKEN, retry_count + 1)
-        elif response.status_code in (403, 429):
-            print("🚫 Quota or rate limit hit. Switching project...")
-            current_index = (current_index + 1) % len(credentials)
-            refresh_access_token_auto()
-            send_message(video_id, message_text, ACCESS_TOKEN, retry_count + 1)
-        else:
-            print(f"❌ Failed to send message: {response.status_code} {response.text}")
-
-    except Exception as e:
-        print(f"❌ Exception in send_message: {str(e)}")
-
-def get_live_video_id_by_channel(channel_id, access_token):
-    """Get the live video ID for a public channel (not owned by the bot)"""
-    url = "https://www.googleapis.com/youtube/v3/search"
-    params = {
-        "part": "id",
-        "channelId": channel_id,
-        "eventType": "live",
-        "type": "video"
-    }
-    headers = {
-        "Authorization": f"Bearer {access_token}"
     }
 
-    response = requests.get(url, headers=headers, params=params)
-    
-    if response.status_code == 200:
-        items = response.json().get("items", [])
-        if items:
-            return items[0]["id"]["videoId"]
-        else:
-            print("❌ No live video found on that channel.")
-            return None
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code == 401:
+        print("🔁 Token expired. Refreshing...")
+        refresh_access_token_auto()
+        send_message(video_id, message_text, ACCESS_TOKEN)
+    elif response.status_code == 200:
+        print(f"✅ Replied: {message_text}")
     else:
-        print(f"❌ Error fetching live video: {response.text}")
-        return None
+        print("❌ Failed to send message:", response.text)
 
 # === Helper Functions ===
 
@@ -1434,42 +1387,37 @@ def process_command(message, author_name, author_id):
     return None
 
 def run_bot():
+    if not VIDEO_ID:
+        print("❌ Error: YOUTUBE_VIDEO_ID environment variable not set.")
+        return
+
+    # 🔁 Refresh access token before anything else
     refresh_access_token_auto()
 
-    # Get the target channel ID from environment
-    channel_id = os.getenv("YOUTUBE_CHANNEL_ID")
-    if not channel_id:
-        print("❌ Environment variable YOUTUBE_CHANNEL_ID not set.")
-        return
-
-    # Auto-detect current live stream video ID
-    video_id = get_live_video_id_by_channel(channel_id, ACCESS_TOKEN)
-    if not video_id:
-        print("❌ No live video found on target channel. Retrying in 60 seconds...")
-        time.sleep(60)
-        return
-
-    # Start chat + timers
+    # ✅ Start timer system
     start_timer_system()
-    chat = pytchat.create(video_id=video_id)
-    print(f"✅ Bot started. Watching live chat of video: {video_id}")
+
+    chat = pytchat.create(video_id=VIDEO_ID)
+    print("✅ Bot started...")
 
     while chat.is_alive():
-        chatdata = chat.get()
-        for c in chatdata.items:  # ✅ Only new, unread messages (no double replies)
+        for c in chat.get().sync_items():
             print(f"{c.author.name}: {c.message}")
+            
+            # Increment chat count for timer system
             increment_chat_count()
-
+            
+            # Handle original !hello command
             if "!hello" in c.message.lower():
                 reply = f"Hi {c.author.name} !"
-                send_message(video_id, reply, ACCESS_TOKEN)
-
+                send_message(VIDEO_ID, reply, ACCESS_TOKEN)
+            
+            # Handle study bot commands
             response = process_command(c.message, c.author.name, c.author.channelId)
             if response:
-                send_message(video_id, response, ACCESS_TOKEN)
-
+                send_message(VIDEO_ID, response, ACCESS_TOKEN)
+                
         time.sleep(1)
-
 
 @app.route("/")
 def home():
