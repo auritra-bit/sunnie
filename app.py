@@ -221,45 +221,66 @@ def refresh_access_token_auto():
     print("❌ All tokens failed.")
     ACCESS_TOKEN = None
 
-def send_message(video_id, message_text, access_token):
-    url = "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet"
+def send_message(video_id, message_text, access_token, retry_count=0):
+    global current_index, ACCESS_TOKEN
 
-    video_info = requests.get(
-        f"https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id={video_id}",
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
-
-    if video_info.status_code != 200:
-        print("❌ Failed to get video info. Trying token refresh.")
-        refresh_access_token_auto()
+    if retry_count >= len(credentials):
+        print("❌ All credential projects exhausted. Cannot send message.")
         return
 
-    live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
+    try:
+        # Get live chat ID
+        video_info = requests.get(
+            f"https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id={video_id}",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
 
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "snippet": {
-            "liveChatId": live_chat_id,
-            "type": "textMessageEvent",
-            "textMessageDetails": {
-                "messageText": message_text
+        if video_info.status_code != 200:
+            print("❌ Failed to get video info. Trying token refresh...")
+            current_index = (current_index + 1) % len(credentials)
+            refresh_access_token_auto()
+            send_message(video_id, message_text, ACCESS_TOKEN, retry_count + 1)
+            return
+
+        live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
+
+        # Prepare payload
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "snippet": {
+                "liveChatId": live_chat_id,
+                "type": "textMessageEvent",
+                "textMessageDetails": {
+                    "messageText": message_text
+                }
             }
         }
-    }
 
-    response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(
+            "https://youtube.googleapis.com/youtube/v3/liveChat/messages?part=snippet",
+            headers=headers,
+            json=payload
+        )
 
-    if response.status_code == 401:
-        print("🔁 Token expired. Refreshing...")
-        refresh_access_token_auto()
-        send_message(video_id, message_text, ACCESS_TOKEN)
-    elif response.status_code == 200:
-        print(f"✅ Replied: {message_text}")
-    else:
-        print("❌ Failed to send message:", response.text)
+        if response.status_code == 200:
+            print(f"✅ Replied: {message_text}")
+        elif response.status_code == 401:
+            print("🔁 Token expired. Refreshing and retrying...")
+            refresh_access_token_auto()
+            send_message(video_id, message_text, ACCESS_TOKEN, retry_count + 1)
+        elif response.status_code in (403, 429):
+            print("🚫 Quota or rate limit hit. Switching project...")
+            current_index = (current_index + 1) % len(credentials)
+            refresh_access_token_auto()
+            send_message(video_id, message_text, ACCESS_TOKEN, retry_count + 1)
+        else:
+            print(f"❌ Failed to send message: {response.status_code} {response.text}")
+
+    except Exception as e:
+        print(f"❌ Exception in send_message: {str(e)}")
 
 # === Helper Functions ===
 
