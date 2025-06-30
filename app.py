@@ -234,7 +234,16 @@ def send_message(video_id, message_text, access_token):
         refresh_access_token_auto()
         return
 
-    live_chat_id = video_info.json()["items"][0]["liveStreamingDetails"]["activeLiveChatId"]
+    try:
+        live_details = video_info.json()["items"][0].get("liveStreamingDetails", {})
+        live_chat_id = live_details.get("activeLiveChatId")
+
+        if not live_chat_id:
+            print("❌ No active live chat found. Is the stream live and is chat enabled?")
+            return
+    except (IndexError, KeyError) as e:
+        print(f"❌ Error extracting live chat ID: {e}")
+        return
 
     headers = {
         "Authorization": f"Bearer {access_token}",
